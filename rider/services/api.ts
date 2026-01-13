@@ -1,0 +1,88 @@
+import { User, Order, OrderStatus, MomoNetwork } from '../types';
+
+const BASE_URL = 'http://localhost:5000/api';
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'An API error occurred');
+  }
+  return data;
+}
+
+function getAuthHeaders() {
+  const token = localStorage.getItem('weWashRiderToken');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export const riderApi = {
+  // Authentication
+  register: async (details: {
+    email: string;
+    password: string;
+    role: 'rider';
+    profile: {
+      firstName: string;
+      lastName: string;
+      phone: string;
+    };
+  }): Promise<{ success: boolean; message: string; data: { user: User; token: string } }> => {
+    return fetch(`${BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(details),
+    }).then(response => handleResponse<{ success: boolean; message: string; data: { user: User; token: string } }>(response));
+  },
+
+  login: async (email: string, password: string): Promise<{ success: boolean; message: string; data: { user: User; token: string } }> => {
+    return fetch(`${BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    }).then(response => handleResponse<{ success: boolean; message: string; data: { user: User; token: string } }>(response));
+  },
+
+  getProfile: async (): Promise<{ success: boolean; data: { user: User } }> => {
+    return fetch(`${BASE_URL}/auth/profile`, {
+      method: 'GET',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    }).then(response => handleResponse<{ success: boolean; data: { user: User } }>(response));
+  },
+
+  // Setup Mobile Money for payouts
+  verifyMomo: async (details: {
+    userId: string;
+    momoNumber: string;
+    momoNetwork: MomoNetwork;
+    businessName: string;
+  }): Promise<{ success: boolean; data: { resolvedName: string; subaccountCode: string } }> => {
+    return fetch(`${BASE_URL}/auth/verify-momo`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(details),
+    }).then(response => handleResponse<{ success: boolean; data: { resolvedName: string; subaccountCode: string } }>(response));
+  },
+
+  // Get pending orders available for assignment
+  getPendingOrders: async (): Promise<Order[]> => {
+    return fetch(`${BASE_URL}/v1/manage/orders/pending`, {
+      headers: getAuthHeaders(),
+    }).then(response => handleResponse<Order[]>(response));
+  },
+
+  // Update order status (progress through workflow)
+  updateOrderStatus: async (orderId: string, status: OrderStatus): Promise<{ success: boolean; newStatus: OrderStatus }> => {
+    return fetch(`${BASE_URL}/v1/manage/orders/${orderId}/status`, {
+      method: 'PATCH',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }).then(response => handleResponse<{ success: boolean; newStatus: OrderStatus }>(response));
+  },
+
+  // Get current active order (if any)
+  getActiveOrder: async (riderId: string): Promise<Order | null> => {
+    // This endpoint doesn't exist yet - would need to be created
+    // For now, return null and rely on WebSocket for order assignments
+    return Promise.resolve(null);
+  }
+};

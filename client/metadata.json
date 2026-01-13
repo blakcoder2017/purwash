@@ -1,0 +1,5 @@
+{
+  "name": "weWash Laundry Service",
+  "description": "A progressive web application for a modern laundry service, allowing users to create orders, specify pickup locations via an interactive map, and track their order status in real-time.",
+  "requestFramePermissions": []
+}

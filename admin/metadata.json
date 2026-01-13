@@ -1,0 +1,5 @@
+{
+  "name": "weWash Admin",
+  "description": "An enterprise-grade admin dashboard for managing weWash, a laundry pickup & delivery marketplace. It provides tools for monitoring metrics, managing orders and partners, and viewing audit logs.",
+  "requestFramePermissions": []
+}

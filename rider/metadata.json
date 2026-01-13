@@ -1,0 +1,5 @@
+{
+  "name": "weWash Rider App",
+  "description": "A PWA for weWash delivery riders to manage their orders, track earnings, and update their status.",
+  "requestFramePermissions": []
+}

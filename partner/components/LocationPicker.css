@@ -1,0 +1,142 @@
+/* Simple Search-Only LocationPicker Styles */
+
+.location-picker {
+  width: 100%;
+}
+
+.location-search {
+  position: relative;
+}
+
+.search-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.search-input::placeholder {
+  color: #9ca3af;
+}
+
+.gps-button {
+  padding: 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+  min-width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gps-button:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.gps-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.loading-indicator {
+  padding: 8px 16px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 14px;
+  margin-top: 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.suggestions-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  margin-top: 4px;
+}
+
+.suggestion-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.suggestion-item:hover {
+  background-color: #f9fafb;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.selected-location {
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  color: #166534;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.selected-location strong {
+  font-weight: 600;
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .search-input-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .gps-button {
+    align-self: flex-end;
+    width: 48px;
+  }
+  
+  .suggestions-list {
+    max-height: 150px;
+  }
+}

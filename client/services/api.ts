@@ -1,79 +1,44 @@
+import axios from 'axios';
+import type { OrderItem, CreateOrderPayload, Client, CalculatePriceResponseData, LaundryItem, TrackOrderResponse } from '../types';
 
-// FIX: Imported `Coordinates` to resolve the 'Cannot find name' error.
-import { Order, OrderItem, OrderStatus, LaundryItem, PricingPreview, Coordinates } from '../types';
-
-const BASE_URL = 'http://localhost:5000/api';
-
-// Get token from localStorage
-const getToken = (): string | null => {
-  return localStorage.getItem('wewash_token');
-};
-
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    // If we get a 401, clear the token and redirect to login
-    if (response.status === 401) {
-      localStorage.removeItem('wewash_token');
-      window.location.hash = '/auth';
-    }
-    throw new Error(data.message || 'An API error occurred');
-  }
-  return data;
-}
-
-// API wrapper that adds authentication headers
-const apiRequest = async (url: string, options?: RequestInit) => {
-  const token = getToken();
-  const headers = {
+const apiClient = axios.create({
+  baseURL: '/api', // Use proxy to backend
+  headers: {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
-    ...options?.headers,
-  };
-
-  const response = await fetch(`${BASE_URL}${url}`, {
-    ...options,
-    headers,
-  });
-
-  return response;
-};
+  },
+});
 
 export const api = {
-  getCatalog: (): Promise<{ items: LaundryItem[] }> => {
-    // FIX: Explicitly typed the generic handleResponse function to ensure the correct return type for the promise chain.
-    return apiRequest('/catalog/catalog').then(response => handleResponse<{ items: LaundryItem[] }>(response));
+  getLaundryItems: async () => {
+    const response = await apiClient.get<{ items: LaundryItem[]; pagination: any }>('/catalog/catalog');
+    // Transform the response to match expected format
+    return {
+      success: true,
+      data: response.data.items
+    };
   },
 
-  calculatePreview: (items: OrderItem[]): Promise<PricingPreview> => {
-    // FIX: Explicitly typed the generic handleResponse function to ensure the correct return type for the promise chain.
-    return apiRequest('/catalog/calculate-preview', {
-      method: 'POST',
-      body: JSON.stringify({ items }),
-    }).then(response => handleResponse<PricingPreview>(response));
-  },
-
-  createOrder: (order: {
-      client: { phone: string; location: { addressName: string, coordinates: Coordinates | null } },
-      items: { name: string; price: number; quantity: number }[]
-  }): Promise<{ _id: string, friendlyId: string }> => {
-      // FIX: Explicitly typed the generic handleResponse function to ensure the correct return type for the promise chain.
-      return apiRequest('/orders', {
-          method: 'POST',
-          body: JSON.stringify(order),
-      }).then(response => handleResponse<{ _id: string, friendlyId: string }>(response));
+  getClient: async (phone: string) => {
+    // A simple regex to validate phone number format before sending
+    if (!/^\d{10}$/.test(phone)) {
+        return Promise.reject(new Error("Invalid phone number format."));
+    }
+    const response = await apiClient.get<{ success: boolean; data: Client }>(`/clients/${phone}`);
+    return response.data;
   },
   
-  initializePayment: (orderId: string, email: string): Promise<{ authorization_url: string }> => {
-      // FIX: Explicitly typed the generic handleResponse function to ensure the correct return type for the promise chain.
-      return apiRequest('/v1/payments/initialize', {
-          method: 'POST',
-          body: JSON.stringify({ orderId, email }),
-      }).then(response => handleResponse<{ authorization_url: string }>(response));
+  calculatePrice: async (items: OrderItem[]) => {
+    const response = await apiClient.post<{ success: boolean; data: CalculatePriceResponseData }>('/orders/calculate', { items });
+    return response.data;
   },
 
-  getOrderStatus: (friendlyId: string): Promise<OrderStatus> => {
-    // FIX: Explicitly typed the generic handleResponse function to ensure the correct return type for the promise chain.
-    return apiRequest(`/orders/${friendlyId}`).then(response => handleResponse<OrderStatus>(response));
+  createOrder: async (payload: CreateOrderPayload) => {
+    const response = await apiClient.post('/orders', payload);
+    return response.data;
   },
+
+  trackOrder: async (phone: string) => {
+    const response = await apiClient.get<TrackOrderResponse>(`/orders/track/${phone}`);
+    return response.data;
+  }
 };

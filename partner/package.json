@@ -1,5 +1,5 @@
 {
-  "name": "wewash-laundry-partner",
+  "name": "PurWash-laundry-partner",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,10 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/mapbox-gl": "^3.4.1",
+    "mapbox-gl": "^3.17.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-map-gl": "^7.1.7",
-    "mapbox-gl": "^3.4.0"
+    "react-router-dom": "^7.12.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

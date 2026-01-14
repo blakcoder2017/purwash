@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const User = require('../models/User');
+const { emitOrderAssignment, emitOrderStatusUpdate } = require('../utils/websocket');
 
 // Assign rider and laundry to an order
 exports.assignStakeholders = async (req, res) => {
@@ -23,6 +24,9 @@ exports.assignStakeholders = async (req, res) => {
     order.status = 'assigned';
     await order.save();
 
+    // Emit WebSocket event to assigned rider and partner
+    emitOrderAssignment(riderId, laundryId, order);
+
     res.json({ success: true, message: "Stakeholders assigned successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -32,9 +36,35 @@ exports.assignStakeholders = async (req, res) => {
 // Get pending orders that need assignment
 exports.getPendingOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ status: 'created' })
-      .sort({ createdAt: -1 })
-      .select('friendlyId client.location pricing createdAt');
+    const userRole = req.user.role;
+    const userId = req.user.id;
+    
+    let orders;
+    
+    if (userRole === 'rider') {
+      // Rider sees: client info, partner info, full pricing, delivery fee
+      orders = await Order.find({ 
+        status: 'assigned',
+        rider: userId 
+      })
+      .populate('laundry', 'businessName profile.firstName profile.lastName phone')
+      .select('friendlyId client location pricing rider laundry status createdAt')
+      .sort({ createdAt: -1 });
+    } else if (userRole === 'partner') {
+      // Partner sees: rider info, partial pricing (only laundry fee), no client details
+      orders = await Order.find({ 
+        status: 'assigned',
+        laundry: userId 
+      })
+      .populate('rider', 'profile.firstName profile.lastName phone')
+      .select('friendlyId location pricing rider laundry status createdAt items')
+      .sort({ createdAt: -1 });
+    } else {
+      // Default: unassigned orders for admin
+      orders = await Order.find({ status: 'created' })
+        .select('friendlyId client.location pricing createdAt')
+        .sort({ createdAt: -1 });
+    }
     
     res.json(orders);
   } catch (error) {
@@ -63,6 +93,9 @@ exports.updateOrderStatus = async (req, res) => {
 
     order.status = status;
     await order.save();
+
+    // Emit WebSocket event for status update
+    emitOrderStatusUpdate(order._id, status, req.user.id);
 
     res.json({ success: true, newStatus: order.status });
   } catch (error) {

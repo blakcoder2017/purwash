@@ -7,7 +7,7 @@ const VITE_ADMIN_SECRET_KEY = process.env.VITE_ADMIN_SECRET_KEY;
 const adminApi = axios.create({
   baseURL: VITE_API_URL || 'http://localhost:5000/api',
   headers: {
-    'x-admin-secret': VITE_ADMIN_SECRET_KEY || 'weWash_Tamale_2026_XYZ',
+    'x-admin-secret': VITE_ADMIN_SECRET_KEY || 'PurWash_Tamale_2026_XYZ',
     'Content-Type': 'application/json',
   },
 });
@@ -51,7 +51,7 @@ if (!VITE_API_URL) {
             const role = config.url.includes('role=rider') ? 'rider' : 'laundry';
             const mockPartners: Partner[] = Array.from({ length: 10 }, (_, i) => ({
                 _id: `${role}_${i}`, name: `${role === 'rider' ? 'Rider' : 'Laundry'} ${i+1}`,
-                email: `${role}${i+1}@wewash.com`, phone: `555-010${i}`, role,
+                email: `${role}${i+1}@PurWash.com`, phone: `555-010${i}`, role,
                 status: (['active', 'inactive', 'banned'] as const)[i % 3],
                 createdAt: new Date(Date.now() - i * 86400000).toISOString(),
             }));

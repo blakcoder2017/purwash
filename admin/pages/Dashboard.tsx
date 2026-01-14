@@ -47,7 +47,7 @@ const Dashboard: React.FC = () => {
         <>
             <PageHeader
                 title="Dashboard"
-                subtitle="Welcome back, Admin! Here's a summary of weWash activity."
+                subtitle="Welcome back, Admin! Here's a summary of PurWash activity."
             />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">

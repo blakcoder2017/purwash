@@ -101,7 +101,7 @@ const Partners: React.FC = () => {
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
       const timestamp = new Date().toISOString().slice(0, 10);
-      link.setAttribute('download', `wewash_partners_export_${timestamp}.csv`);
+      link.setAttribute('download', `PurWash_partners_export_${timestamp}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();

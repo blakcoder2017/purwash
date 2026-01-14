@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Auth Debug</title>
+</head>
+<body>
+    <h1>Admin Authentication Debug</h1>
+    
+    <div id="status"></div>
+    
+    <h2>Current Token in localStorage</h2>
+    <pre id="tokenInfo"></pre>
+    
+    <h2>Test Login</h2>
+    <button onclick="testLogin()">Test Admin Login</button>
+    <pre id="loginResult"></pre>
+    
+    <h2>Test API Call</h2>
+    <button onclick="testApiCall()">Test Orders API</button>
+    <pre id="apiResult"></pre>
+    
+    <h2>Clear Storage</h2>
+    <button onclick="clearStorage()">Clear localStorage</button>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5000';
+        
+        function updateStatus() {
+            const token = localStorage.getItem('PurWashAdminToken');
+            const admin = localStorage.getItem('PurWashAdminUser');
+            
+            document.getElementById('tokenInfo').textContent = `
+Token: ${token ? token.substring(0, 50) + '...' : 'No token'}
+Admin: ${admin || 'No admin data'}
+            `.trim();
+        }
+        
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/admin/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@purwash.com',
+                        password: 'admin123456'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('PurWashAdminToken', data.data.token);
+                    localStorage.setItem('PurWashAdminUser', JSON.stringify(data.data.admin));
+                }
+                
+                document.getElementById('loginResult').textContent = JSON.stringify(data, null, 2);
+                updateStatus();
+            } catch (error) {
+                document.getElementById('loginResult').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        async function testApiCall() {
+            const token = localStorage.getItem('PurWashAdminToken');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/admin/orders`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('apiResult').textContent = `
+Status: ${response.status}
+Response: ${JSON.stringify(data, null, 2)}
+                `.trim();
+            } catch (error) {
+                document.getElementById('apiResult').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        function clearStorage() {
+            localStorage.removeItem('PurWashAdminToken');
+            localStorage.removeItem('PurWashAdminUser');
+            updateStatus();
+            document.getElementById('loginResult').textContent = '';
+            document.getElementById('apiResult').textContent = '';
+        }
+        
+        // Initialize
+        updateStatus();
+    </script>
+</body>
+</html>

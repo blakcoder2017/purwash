@@ -72,7 +72,24 @@ export interface Order {
       };
     };
   };
+  laundry: {
+    businessName: string;
+    profile: {
+      firstName: string;
+      lastName: string;
+      phone: string;
+    };
+  };
+  items: {
+    name: string;
+    price: number;
+    quantity: number;
+  }[];
   pricing: {
+    itemsSubtotal: number;
+    serviceFee: number;
+    deliveryFee: number;
+    systemFee: number;
     totalAmount: number;
   };
   createdAt: string;

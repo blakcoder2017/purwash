@@ -6,7 +6,7 @@ const Sidebar: React.FC = () => {
   return (
     <div className="w-64 bg-w-primary text-white flex flex-col flex-shrink-0">
       <div className="h-20 flex items-center px-6">
-        <h1 className="text-2xl font-bold">weWash Admin</h1>
+        <h1 className="text-2xl font-bold">PurWash Admin</h1>
       </div>
       <nav className="flex-1 px-4 py-4">
         <ul>
@@ -30,7 +30,7 @@ const Sidebar: React.FC = () => {
         </ul>
       </nav>
       <div className="p-6 border-t border-white/10 text-sm text-gray-400">
-        <p>&copy; 2024 weWash Inc.</p>
+        <p>&copy; 2024 PurWash Inc.</p>
       </div>
     </div>
   );

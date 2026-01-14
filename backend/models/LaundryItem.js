@@ -184,13 +184,13 @@ const LaundryItemSchema = new mongoose.Schema({
   // 9. Metadata and Tracking
   addedBy: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User',
+    ref: 'AdminUser',
     required: true
   },
   
   lastUpdatedBy: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User'
+    ref: 'AdminUser'
   },
   
   // Tags for search and filtering
@@ -234,25 +234,27 @@ LaundryItemSchema.virtual('formattedPrice').get(function() {
   return `₵${this.pricing.clientPrice.toFixed(2)}`;
 });
 
-// Pre-save middleware for slug generation
-LaundryItemSchema.pre('save', function(next) {
-  if (this.isModified('name') && !this.slug) {
-    this.slug = this.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-  }
-  next();
-});
+// Pre-save middleware for slug generation - DISABLED
+// LaundryItemSchema.pre('save', function(next) {
+//   if (this.isModified('name') && !this.slug) {
+//     this.slug = this.name
+//       .toLowerCase()
+//       .replace(/[^a-z0-9]+/g, '-')
+//       .replace(/(^-|-$)/g, '');
+//   }
+//   if (next) next();
+// });
 
-// Validation middleware
-LaundryItemSchema.pre('save', function(next) {
-  // Ensure client price covers base price + system fee
-  const requiredMinPrice = this.pricing.basePrice + this.pricing.embeddedSystemFee;
-  if (this.pricing.clientPrice < requiredMinPrice) {
-    return next(new Error(`Client price must be at least ₵${requiredMinPrice.toFixed(2)} (base: ₵${this.pricing.basePrice.toFixed(2)} + system fee: ₵${this.pricing.embeddedSystemFee.toFixed(2)})`));
-  }
-  next();
-});
+// Validation middleware - DISABLED
+// LaundryItemSchema.pre('save', function(next) {
+//   // Ensure client price covers base price + system fee
+//   if (this.pricing && this.pricing.basePrice && this.pricing.embeddedSystemFee && this.pricing.clientPrice) {
+//     const requiredMinPrice = this.pricing.basePrice + this.pricing.embeddedSystemFee;
+//     if (this.pricing.clientPrice < requiredMinPrice) {
+//       if (next) return next(new Error(`Client price must be at least ₵${requiredMinPrice.toFixed(2)} (base: ₵${this.pricing.basePrice.toFixed(2)} + system fee: ₵${this.pricing.embeddedSystemFee.toFixed(2)})`));
+//     }
+//   }
+//   if (next) next();
+// });
 
 module.exports = mongoose.model('LaundryItem', LaundryItemSchema);

@@ -4,7 +4,10 @@ const paystack = require('../utils/paystack');
 // Verify MoMo and setup Paystack subaccount for existing users
 exports.verifyAndSetupMomo = async (req, res) => {
   try {
-    const { userId, momoNumber, momoNetwork, businessName } = req.body;
+    const { momoNumber, momoNetwork, businessName } = req.body;
+    
+    // Get userId from authenticated user (JWT token)
+    const userId = req.user.id;
 
     // 1. Find the user
     const user = await User.findById(userId);
@@ -45,13 +48,48 @@ exports.verifyAndSetupMomo = async (req, res) => {
         id: user._id, 
         name: user.profile.firstName || user.businessName, 
         resolvedName,
-        subaccountCode: user.paystack.subaccountCode
+        businessName: user.businessName,
+        momo: user.momo,
+        paystack: user.paystack,
+        isOnline: user.isOnline
       } 
     });
 
   } catch (error) {
-    const message = error.response?.data?.message || error.message;
-    res.status(400).json({ success: false, message });
+    console.error('MoMo verification error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Update online status
+exports.updateOnlineStatus = async (req, res) => {
+  try {
+    const { isOnline } = req.body;
+    const userId = req.user.id;
+
+    console.log('Updating online status for user:', userId, 'to:', isOnline);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      console.log('User not found:', userId);
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    console.log('Current isOnline:', user.isOnline);
+    user.isOnline = isOnline;
+    console.log('Setting isOnline to:', isOnline);
+    
+    await user.save();
+    console.log('User saved. New isOnline:', user.isOnline);
+
+    res.json({ 
+      success: true, 
+      isOnline: user.isOnline,
+      message: `Online status updated to ${isOnline ? 'online' : 'offline'}`
+    });
+  } catch (error) {
+    console.error('Online status update error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

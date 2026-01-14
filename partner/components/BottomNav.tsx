@@ -19,11 +19,19 @@ const WalletIcon = ({ isActive }: { isActive: boolean }) => (
     </svg>
 );
 
+const ProfileIcon = ({ isActive }: { isActive: boolean }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={`w-6 h-6 ${isActive ? 'text-primary' : 'text-slate-400'}`}>
+        <path fillRule="evenodd" d="M18.685 19.352A8.969 8.969 0 0012 21a8.969 8.969 0 00-6.685-2.648c-.22 0-.439.015-.656.045A9.681 9.681 0 0112 4.5c3.514 0 6.55 2.312 7.6 5.5a9.68 9.68 0 017.6-5.5c-.217-.03-.436-.045-.656-.045zM12 17.5a5.5 5.5 0 100-11 5.5 5.5 0 000 11z" clipRule="evenodd" />
+        <path d="M12 14a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" />
+    </svg>
+);
+
 
 const BottomNav: React.FC<BottomNavProps> = ({ currentView, setCurrentView }) => {
     const navItems = [
         { view: View.Dashboard, label: 'Dashboard', icon: DashboardIcon },
         { view: View.Earnings, label: 'Earnings', icon: WalletIcon },
+        { view: View.Profile, label: 'Profile', icon: ProfileIcon },
     ];
 
     return (

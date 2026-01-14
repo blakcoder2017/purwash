@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Partner API Test</title>
+</head>
+<body>
+    <h1>Partner Registration API Test</h1>
+    <button onclick="testPartnerFlow()">Test Partner Registration Flow</button>
+    <div id="results"></div>
+
+    <script>
+        async function testPartnerFlow() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<h3>Testing...</h3>';
+            
+            try {
+                // Step 1
+                const step1Response = await fetch('http://localhost:5000/api/partner-registration/step-1', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'browser_test@example.com',
+                        password: 'password123',
+                        firstName: 'Browser',
+                        lastName: 'Test',
+                        phone: '0541234567',
+                        role: 'partner'
+                    })
+                });
+                
+                const step1 = await step1Response.json();
+                results.innerHTML += `<p>Step 1: ${step1.success ? '✅' : '❌'} ${step1.message}</p>`;
+                
+                if (!step1.success) {
+                    results.innerHTML += `<p>Error: ${step1.message}</p>`;
+                    return;
+                }
+                
+                const tempToken = step1.data.tempToken;
+                results.innerHTML += `<p>TempToken: ${tempToken ? '✅' : '❌'}</p>`;
+                
+                // Step 2
+                const step2Response = await fetch('http://localhost:5000/api/partner-registration/step-2', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${tempToken}`
+                    },
+                    body: JSON.stringify({
+                        businessName: 'Browser Test Business',
+                        address: 'Test Address, Ghana'
+                    })
+                });
+                
+                const step2 = await step2Response.json();
+                results.innerHTML += `<p>Step 2: ${step2.success ? '✅' : '❌'} ${step2.message}</p>`;
+                
+                if (!step2.success) {
+                    results.innerHTML += `<p>Error: ${step2.message}</p>`;
+                    return;
+                }
+                
+                const newTempToken = step2.data.tempToken;
+                results.innerHTML += `<p>New TempToken: ${newTempToken ? '✅' : '❌'}</p>`;
+                
+                // Step 3
+                results.innerHTML += `<p>Testing Step 3...</p>`;
+                const step3Response = await fetch('http://localhost:5000/api/partner-registration/step-3', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${newTempToken}`
+                    },
+                    body: JSON.stringify({
+                        momoNumber: '0541234567',
+                        momoNetwork: 'mtn',
+                        profilePicture: ''
+                    })
+                });
+                
+                const step3 = await step3Response.json();
+                results.innerHTML += `<p>Step 3: ${step3.success ? '✅' : '❌'} ${step3.message}</p>`;
+                results.innerHTML += `<p>Step 3 Data: ${step3.data ? '✅' : '❌'}</p>`;
+                results.innerHTML += `<p>Step 3 Token: ${step3.data?.token ? '✅' : '❌'}</p>`;
+                
+                if (step3.errors) {
+                    results.innerHTML += `<p>Errors: ${step3.errors.join(', ')}</p>`;
+                }
+                
+            } catch (error) {
+                results.innerHTML += `<p style="color: red;">Error: ${error.message}</p>`;
+                console.error('Flow Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

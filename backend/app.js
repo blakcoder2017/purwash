@@ -6,15 +6,17 @@ const globalErrorHandler = require('./controllers/errorController');
 const cors = require('cors');
 const helmet = require('helmet');
 
-const clientRoutes = require('./routes/clients');
+
 const manageRoutes = require('./routes/manage');
 const paystackRoutes = require('./routes/paystack');
 const webhookRoutes = require('./routes/webhook');
 const userRoutes = require('./routes/userRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const clientRoutes = require('./routes/clientRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const laundryItemRoutes = require('./routes/laundryItemRoutes');
 const authRoutes = require('./routes/auth');
+const partnerRegistrationRoutes = require('./routes/partnerRegistration');
 
 const app = express();
 
@@ -23,6 +25,7 @@ app.use(helmet());
 
 // 2) CORS CONFIGURATION
 const corsOptions = {
+  origin: true,
   origin: [
     'http://localhost:3000',  // Client app
     'http://localhost:3001',  // Admin app
@@ -37,7 +40,7 @@ const corsOptions = {
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret'],
   preflightContinue: false,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
 };
 
 // Apply CORS globally
@@ -62,16 +65,21 @@ if (process.env.NODE_ENV === 'development') {
 
 // 6) ROUTES
 app.use('/api/auth', authRoutes);
-app.use('/api/v1/client', clientRoutes);
+app.use('/api/partner-registration', partnerRegistrationRoutes);
+
 app.use('/api/v1/manage', manageRoutes);
 app.use('/api/v1/payments', paystackRoutes);
-app.use('/api/users', userRoutes);   // All partner routes
-app.use('/api/orders', orderRoutes); // All order routes
-app.use('/api/admin', adminRoutes);
-app.use('/api/catalog', laundryItemRoutes); // Laundry catalog routes
+app.use('/api/users', userRoutes); // Added back
+// app.use('/api/orders', orderRoutes); // Temporarily commented
+app.use('/api/clients', clientRoutes); // Added back
+app.use('/api/admin', adminRoutes); // Admin routes (protected)
+app.use('/api/catalog', laundryItemRoutes); // Added back
+app.use('/api/webhook', webhookRoutes); // Webhook routes
+app.use('/api/wallet', require('./routes/walletRoutes')); // Added back
+
 
 // 7) HEALTH CHECK
-app.get('/', (req, res) => res.send('weWash API is live 🚀'));
+app.get('/', (req, res) => res.send('weWash API is live '));
 
 // 8) FAVICON
 app.get('/favicon.ico', (req, res) => {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAppContext } from '../context/AppContext';
 
 const WalletIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-accent">
@@ -20,6 +21,13 @@ const RevenueBox = ({ title, amount, description, isPrimary = false }: { title: 
 );
 
 const EarningsScreen: React.FC = () => {
+    const { user } = useAppContext();
+    
+    // Calculate real wallet data
+    const totalEarned = user?.wallet?.totalEarned || 0;
+    const pendingBalance = user?.wallet?.pendingBalance || 0;
+    const paidOut = totalEarned - pendingBalance;
+    
     return (
         <div>
             <div className="bg-accent text-primary text-center py-2 text-sm font-bold sticky top-0 z-10">
@@ -29,51 +37,61 @@ const EarningsScreen: React.FC = () => {
             <div className="p-4 space-y-6">
                 <header className="mb-4">
                     <h1 className="text-3xl font-black text-primary">Earnings</h1>
-                    <p className="text-slate-500">Your read-only wallet mirror.</p>
+                    <p className="text-slate-500">Your real-time wallet data.</p>
                 </header>
 
                 <div className="space-y-4">
                     <RevenueBox
                         isPrimary
                         title="Available for Payout"
-                        amount="GH₵ 1,250.75"
-                        description="Next settlement: Tomorrow at 8:00 AM"
+                        amount={`GH₵ ${paidOut.toFixed(2)}`}
+                        description="Ready for withdrawal"
                     />
                     <RevenueBox
-                        title="Total Revenue (This Month)"
-                        amount="GH₵ 4,830.00"
-                        description="Based on completed orders"
+                        title="Pending Balance"
+                        amount={`GH₵ ${pendingBalance.toFixed(2)}`}
+                        description="Processing orders"
+                    />
+                    <RevenueBox
+                        title="Total Revenue"
+                        amount={`GH₵ ${totalEarned.toFixed(2)}`}
+                        description="All time earnings"
                     />
                 </div>
 
                 <div>
-                    <h2 className="text-xl font-bold text-primary mb-2">Recent Transactions</h2>
+                    <h2 className="text-xl font-bold text-primary mb-2">Account Summary</h2>
                     <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-4">
-                        {/* Transaction Item */}
                         <div className="flex justify-between items-center">
                             <div>
-                                <p className="font-bold text-primary">Payout for Order #123456</p>
-                                <p className="text-sm text-slate-500">Jan 12, 2024</p>
+                                <p className="font-bold text-primary">Business Name</p>
+                                <p className="text-sm text-slate-500">{user?.businessName || 'Not set'}</p>
                             </div>
-                            <p className="font-bold text-green-600 text-lg">+ GH₵ 55.00</p>
+                            <p className="font-bold text-blue-600 text-lg">Partner</p>
                         </div>
                         <div className="border-t border-slate-100"></div>
-                        {/* Transaction Item */}
                         <div className="flex justify-between items-center">
                             <div>
-                                <p className="font-bold text-primary">Payout for Order #654321</p>
-                                <p className="text-sm text-slate-500">Jan 11, 2024</p>
+                                <p className="font-bold text-primary">Payment Status</p>
+                                <p className="text-sm text-slate-500">MoMo Verification</p>
                             </div>
-                            <p className="font-bold text-green-600 text-lg">+ GH₵ 45.00</p>
+                            <p className={`font-bold text-lg ${user?.momo?.isVerified ? 'text-green-600' : 'text-yellow-600'}`}>
+                                {user?.momo?.isVerified ? '✅ Verified' : '⏳ Pending'}
+                            </p>
                         </div>
-                         <div className="border-t border-slate-100"></div>
-                         {/* Transaction Item */}
+                        <div className="border-t border-slate-100"></div>
                         <div className="flex justify-between items-center">
                             <div>
-                                <p className="font-bold text-primary">Payout for Order #789012</p>
-                                <p className="text-sm text-slate-500">Jan 10, 2024</p>
+                                <p className="font-bold text-primary">Account Status</p>
+                                <p className="text-sm text-slate-500">Since {new Date(user?.createdAt || '').toLocaleDateString()}</p>
                             </div>
-                            <p className="font-bold text-green-600 text-lg">+ GH₵ 25.00</p>
+                            <p className={`font-bold text-lg ${
+                                user?.accountStatus === 'active' ? 'text-green-600' : 
+                                user?.accountStatus === 'suspended' ? 'text-yellow-600' : 'text-red-600'
+                            }`}>
+                                {user?.accountStatus === 'active' ? '✅ Active' : 
+                                 user?.accountStatus === 'suspended' ? '⏸️ Suspended' : '🚫 Banned'}
+                            </p>
                         </div>
                     </div>
                 </div>

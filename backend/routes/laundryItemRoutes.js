@@ -23,19 +23,19 @@ const { optionalAuth } = require('../middleware/auth');
 // === CLIENT-FACING ROUTES ===
 
 // 1. Get full catalog with filtering and pagination
-router.get('/catalog', optionalAuth, getCatalog);
+router.get('/catalog', getCatalog);
 
 // 2. Get single item by slug
-router.get('/item/:slug', optionalAuth, getItem);
+router.get('/item/:slug', getItem);
 
 // 3. Get available filters (categories, service types, price range)
-router.get('/filters', optionalAuth, getFilters);
+router.get('/filters', getFilters);
 
 // 4. Get popular items for homepage
-router.get('/popular', optionalAuth, getPopularItems);
+router.get('/popular', getPopularItems);
 
 // 5. Calculate order preview (for cart/checkout)
-router.post('/calculate-preview', optionalAuth, calculateOrderPreview);
+router.post('/calculate-preview', calculateOrderPreview);
 
 // === ADMIN ROUTES ===
 // These should be protected with admin/auth middleware

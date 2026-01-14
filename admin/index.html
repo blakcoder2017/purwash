@@ -1,43 +1,170 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-g" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>weWash Admin</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PurWash Admin Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              'w-primary': '#272757',
-              'w-secondary-background': '#F1F5F9',
-              'w-accent': '#EAB308',
-              'w-text-main': '#272757',
-              'w-text-body': '#334155',
-              'w-text-muted': '#94A3B8',
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e293b',
+                        secondary: '#475569',
+                        accent: '#3b82f6',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                        background: '#f8fafc',
+                    },
+                    fontFamily: {
+                        'inter': ['Inter', 'sans-serif'],
+                    }
+                }
             }
-          }
         }
-      }
     </script>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react-router-dom": "https://esm.sh/react-router-dom@^7.12.0",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "axios": "https://esm.sh/axios@^1.13.2"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
 </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
+<body class="font-inter bg-background text-gray-900">
+    <!-- Login Screen -->
+    <div id="loginScreen" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary to-secondary">
+        <div class="max-w-md w-full space-y-8 p-8">
+            <div class="text-center">
+                <div class="mx-auto h-16 w-16 bg-accent rounded-lg flex items-center justify-center mb-6">
+                    <i class="fas fa-shield-alt text-white text-2xl"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-white">Admin Portal</h2>
+                <p class="mt-2 text-gray-300">Sign in to manage PurWash</p>
+            </div>
+            
+            <form id="loginForm" class="mt-8 space-y-6">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-200">Email</label>
+                        <input type="email" id="email" required 
+                               class="mt-1 block w-full px-3 py-2 bg-white/10 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                               placeholder="admin@purwash.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-200">Password</label>
+                        <input type="password" id="password" required 
+                               class="mt-1 block w-full px-3 py-2 bg-white/10 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                               placeholder="••••••••">
+                    </div>
+                </div>
+                
+                <button type="submit" id="loginBtn" 
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-accent hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent transition-colors">
+                    <i class="fas fa-sign-in-alt mr-2"></i>
+                    Sign In
+                </button>
+            </form>
+            
+            <div id="loginError" class="hidden bg-red-500/10 border border-red-500 text-red-200 px-4 py-3 rounded-lg text-sm">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <span id="loginErrorText"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="dashboardScreen" class="hidden min-h-screen bg-background">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 flex items-center">
+                            <div class="h-8 w-8 bg-accent rounded-lg flex items-center justify-center mr-3">
+                                <i class="fas fa-shield-alt text-white text-sm"></i>
+                            </div>
+                            <span class="text-xl font-bold text-primary">PurWash Admin</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button onclick="refreshData()" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <div class="relative">
+                            <button onclick="toggleUserMenu()" class="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-accent">
+                                <div class="h-8 w-8 bg-accent rounded-full flex items-center justify-center">
+                                    <span class="text-white font-medium" id="userInitial">A</span>
+                                </div>
+                            </button>
+                            <div id="userMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-50">
+                                <a href="#" onclick="showProfile()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <i class="fas fa-user mr-2"></i>Profile
+                                </a>
+                                <a href="#" onclick="logout()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <div class="flex">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-white shadow-sm min-h-screen">
+                <nav class="mt-5 px-2">
+                    <div class="space-y-1">
+                        <a href="#" onclick="showDashboard()" class="nav-item group flex items-center px-2 py-2 text-sm font-medium rounded-md bg-accent text-white">
+                            <i class="fas fa-tachometer-alt mr-3"></i>
+                            Dashboard
+                        </a>
+                        <a href="#" onclick="showOrders()" class="nav-item group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+                            <i class="fas fa-shopping-bag mr-3"></i>
+                            Orders
+                        </a>
+                        <a href="#" onclick="showClients()" class="nav-item group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+                            <i class="fas fa-users mr-3"></i>
+                            Clients
+                        </a>
+                        <a href="#" onclick="showPartners()" class="nav-item group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+                            <i class="fas fa-store mr-3"></i>
+                            Partners
+                        </a>
+                        <a href="#" onclick="showRiders()" class="nav-item group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+                            <i class="fas fa-motorcycle mr-3"></i>
+                            Riders
+                        </a>
+                        <a href="#" onclick="showAdminUsers()" class="nav-item group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+                            <i class="fas fa-user-shield mr-3"></i>
+                            Admin Users
+                        </a>
+                        <a href="#" onclick="showAnalytics()" class="nav-item group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+                            <i class="fas fa-chart-line mr-3"></i>
+                            Analytics
+                        </a>
+                        <a href="#" onclick="showSettings()" class="nav-item group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900">
+                            <i class="fas fa-cog mr-3"></i>
+                            Settings
+                        </a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="flex-1 p-6">
+                <div id="contentArea">
+                    <!-- Content will be loaded here -->
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="modalContainer"></div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <script src="config.js"></script>
+    <script src="admin.js"></script>
+</body>
 </html>

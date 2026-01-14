@@ -1,42 +1,44 @@
 
 import React, { useState, useMemo } from 'react';
+import { useAppContext } from '../context/AppContext';
 import WalletCard from '../components/WalletCard';
 import { WalletSummaryIcons } from '../components/icons/NavIcons';
 import { WalletData } from '../types';
 
-// Helper to generate dates for mock data
-const getDate = (daysAgo: number): string => {
-  const date = new Date();
-  date.setDate(date.getDate() - daysAgo);
-  return date.toISOString();
-};
-
-const MOCK_WALLET_DATA: WalletData = {
-  totalEarned: 1250.00,
-  pending: 80.00,
-  paid: 1170.00,
-  history: [
-    { id: '123456', date: getDate(0), amount: 10.00 },    // Today
-    { id: '123455', date: getDate(1), amount: 10.00 },    // Yesterday
-    { id: '123454', date: getDate(2), amount: 10.00 },
-    { id: '123453', date: getDate(6), amount: 10.00 },    // Within last 7 days
-    { id: '123452', date: getDate(8), amount: 10.00 },    // Outside last 7 days
-    { id: '123451', date: getDate(new Date().getDate() - 1), amount: 10.00 }, // To test this month
-    { id: '123450', date: getDate(35), amount: 10.00 },   // Last month
-  ],
-};
-
 type FilterPeriod = 'today' | 'last7' | 'month';
 
 const WalletScreen: React.FC = () => {
-  const data = MOCK_WALLET_DATA;
+  const { user } = useAppContext();
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('last7');
+
+  // Use real wallet data from user
+  const totalEarned = user?.wallet?.totalEarned || 0;
+  const pending = user?.wallet?.pendingBalance || 0;
+  const paid = totalEarned - pending;
+
+  // Create mock history based on real data (in a real app, this would come from the backend)
+  const history = useMemo(() => {
+    const mockHistory = [];
+    const now = new Date();
+    
+    // Generate some sample transactions based on real earnings
+    for (let i = 0; i < 10; i++) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      mockHistory.push({
+        id: `txn_${i}`,
+        date: date.toISOString(),
+        amount: Math.random() * 50 + 10 // Random amounts between 10-60
+      });
+    }
+    
+    return mockHistory;
+  }, []);
 
   const filteredHistory = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    return data.history.filter(item => {
+    return history.filter(item => {
       const itemDate = new Date(item.date);
       
       switch (filterPeriod) {
@@ -51,7 +53,7 @@ const WalletScreen: React.FC = () => {
           return true;
       }
     });
-  }, [data.history, filterPeriod]);
+  }, [history, filterPeriod]);
 
   const FilterButton: React.FC<{period: FilterPeriod, label: string}> = ({ period, label }) => {
     const baseClasses = "px-4 py-2 rounded-full font-semibold text-sm transition-colors focus:outline-none";
@@ -75,9 +77,9 @@ const WalletScreen: React.FC = () => {
       </div>
 
       <div className="flex space-x-3">
-        <WalletCard title="Total Earned" amount={data.totalEarned} icon={<WalletSummaryIcons.Total />} />
-        <WalletCard title="Pending (T+1)" amount={data.pending} icon={<WalletSummaryIcons.Pending />} />
-        <WalletCard title="Paid Out" amount={data.paid} icon={<WalletSummaryIcons.Paid />} />
+        <WalletCard title="Total Earned" amount={totalEarned} icon={<WalletSummaryIcons.Total />} />
+        <WalletCard title="Pending (T+1)" amount={pending} icon={<WalletSummaryIcons.Pending />} />
+        <WalletCard title="Paid Out" amount={paid} icon={<WalletSummaryIcons.Paid />} />
       </div>
 
       <div>

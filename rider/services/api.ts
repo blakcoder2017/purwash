@@ -11,7 +11,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 }
 
 function getAuthHeaders() {
-  const token = localStorage.getItem('weWashRiderToken');
+  const token = localStorage.getItem('PurWashRiderToken');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -42,6 +42,61 @@ export const riderApi = {
     }).then(response => handleResponse<{ success: boolean; message: string; data: { user: User; token: string } }>(response));
   },
 
+  // Multi-step Registration for Riders/Partners
+  partnerRegistration: {
+    stepOne: async (details: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
+      role: 'rider' | 'partner';
+    }): Promise<{ success: boolean; message: string; step: number; nextStep: number; data: { user: any; tempToken: string } }> => {
+      return fetch(`${BASE_URL}/partner-registration/step-1`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(details),
+      }).then(response => handleResponse<any>(response));
+    },
+
+    stepTwo: async (details: {
+      businessName: string;
+      address: string;
+      lat?: number;
+      lng?: number;
+      bio?: string;
+      operatingHours?: {
+        open: string;
+        close: string;
+      };
+    }, token: string): Promise<{ success: boolean; message: string; step: number; nextStep: number; data: { user: any; tempToken: string } }> => {
+      return fetch(`${BASE_URL}/partner-registration/step-2`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(details),
+      }).then(response => handleResponse<any>(response));
+    },
+
+    stepThree: async (details: {
+      momoNumber: string;
+      momoNetwork: 'mtn' | 'vod' | 'atl';
+      profilePicture?: string;
+    }, token: string): Promise<{ success: boolean; message: string; step: number; isComplete: boolean; data: { user: any; token: string; profileCompleteness: any } }> => {
+      return fetch(`${BASE_URL}/partner-registration/step-3`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(details),
+      }).then(response => handleResponse<any>(response));
+    },
+
+    getStatus: async (token: string): Promise<{ success: boolean; data: { currentStep: number; isComplete: boolean; completeness: number; missingFields: any[]; user: any } }> => {
+      return fetch(`${BASE_URL}/partner-registration/status`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      }).then(response => handleResponse<any>(response));
+    }
+  },
+
   getProfile: async (): Promise<{ success: boolean; data: { user: User } }> => {
     return fetch(`${BASE_URL}/auth/profile`, {
       method: 'GET',
@@ -56,7 +111,7 @@ export const riderApi = {
     momoNetwork: MomoNetwork;
     businessName: string;
   }): Promise<{ success: boolean; data: { resolvedName: string; subaccountCode: string } }> => {
-    return fetch(`${BASE_URL}/auth/verify-momo`, {
+    return fetch(`${BASE_URL}/users/verify-momo`, {
       method: 'POST',
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(details),

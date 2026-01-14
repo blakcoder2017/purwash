@@ -22,15 +22,59 @@ const register = async (req, res) => {
       });
     }
 
-    // Create new user
+    // Create new user with complete schema fields
     const user = new User({
       email,
       password,
       role,
       profile: {
-        ...profile,
-        phone: profile.phone
-      }
+        firstName: profile.firstName || '',
+        lastName: profile.lastName || '',
+        phone: profile.phone,
+        avatar: profile.avatar || ''
+      },
+      isActive: true,
+      lastLogin: new Date(),
+      
+      // Rider/Partner specific fields (with defaults)
+      businessName: profile.businessName || '',
+      location: {
+        address: profile.address || '',
+        lat: profile.lat || null,
+        lng: profile.lng || null
+      },
+      momo: {
+        number: profile.momoNumber || '',
+        network: profile.momoNetwork || null,
+        resolvedName: '',
+        isVerified: false
+      },
+      
+      // Paystack Integration (empty until setup)
+      paystack: {
+        subaccountCode: '',
+        recipientCode: ''
+      },
+
+      // Wallet fields (default values)
+      wallet: {
+        totalEarned: 0,
+        pendingBalance: 0
+      },
+      
+      isOnline: false,
+      bio: '',
+      profilePicture: '',
+      operatingHours: {
+        open: "08:00",
+        close: "18:00"
+      },
+      accountStatus: 'active',
+      banReason: '',
+      strikeCount: 0,
+      
+      // Client specific fields (empty array for all roles initially)
+      addresses: []
     });
 
     await user.save();
@@ -325,12 +369,90 @@ const verifyAndSetupMomo = async (req, res) => {
   }
 };
 
+/**
+ * Admin login
+ */
+const adminLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+    
+    const AdminUser = require('../models/AdminUser');
+    const admin = await AdminUser.findByCredentials(email, password);
+    
+    // Convert to plain object and extract only necessary fields for JWT
+    const adminPayload = {
+      id: admin._id.toString(),
+      username: admin.username,
+      email: admin.email,
+      role: admin.role
+    };
+    
+    const token = generateToken(adminPayload);
+    
+    res.json({
+      success: true,
+      data: {
+        token,
+        admin: {
+          id: admin._id,
+          username: admin.username,
+          email: admin.email,
+          role: admin.role,
+          permissions: admin.permissions,
+          profile: admin.profile
+        }
+      }
+    });
+  } catch (error) {
+    res.status(401).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get user profile completeness information
+ */
+const getProfileCompleteness = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    const completeness = user.getProfileCompleteness();
+    const missingFields = user.getMissingFields();
+    
+    res.json({
+      success: true,
+      data: {
+        completeness,
+        missingFields,
+        isComplete: completeness === 100,
+        totalFields: missingFields.length + Math.floor(completeness * missingFields.length / (100 - completeness)) || 0
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
+  adminLogin,
   getProfile,
   updateProfile,
   changePassword,
   refreshToken,
-  verifyAndSetupMomo
+  verifyAndSetupMomo,
+  getProfileCompleteness
 };

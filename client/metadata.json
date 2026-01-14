@@ -1,5 +1,7 @@
 {
-  "name": "weWash Laundry Service",
-  "description": "A progressive web application for a modern laundry service, allowing users to create orders, specify pickup locations via an interactive map, and track their order status in real-time.",
-  "requestFramePermissions": []
+  "name": "PurWash",
+  "description": "PurWash is a premium laundry hailing PWA for Tamale, Ghana, offering convenient pickup and delivery with a 48-hour turnaround.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
 }

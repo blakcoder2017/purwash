@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { verifyMomo } from '../services/api';
+import { useAppContext } from '../context/AppContext';
 
 interface OnboardingScreenProps {
     onOnboardingComplete: () => void;
@@ -12,6 +13,7 @@ const LocationPinIcon = () => (
 );
 
 const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onOnboardingComplete }) => {
+    const { user, login } = useAppContext();
     const [step, setStep] = useState(1);
     const [momoNumber, setMomoNumber] = useState('');
     const [momoNetwork, setMomoNetwork] = useState('mtn');
@@ -20,19 +22,32 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onOnboardingComplet
     const [error, setError] = useState('');
     const [resolvedName, setResolvedName] = useState('');
 
+    // Pre-fill business name if user already has it
+    React.useEffect(() => {
+        if (user?.businessName) {
+            setBusinessName(user.businessName);
+        }
+    }, [user]);
+
     const handleMomoSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         setError('');
         try {
             const response = await verifyMomo({
-                userId: 'laundry_partner_123',
                 momoNumber,
                 momoNetwork,
                 businessName
             });
             if(response.success && response.user) {
                 setResolvedName((response.user as any).resolvedName);
+                
+                // Update user context with new data
+                const token = localStorage.getItem('PurWashPartnerToken');
+                if (token) {
+                    login(response.user, token);
+                }
+                
                 setTimeout(() => setStep(2), 1000); // Give user time to see resolved name
             }
         } catch (err: any) {
@@ -46,7 +61,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onOnboardingComplet
         <div className="min-h-screen bg-primary flex flex-col items-center justify-center p-4">
             <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 space-y-6">
                 <div className="text-center">
-                    <h1 className="text-3xl font-black text-primary">weWash Partner</h1>
+                    <h1 className="text-3xl font-black text-primary">PurWash Partner</h1>
                     <p className="text-slate-500 mt-1">Business Setup</p>
                 </div>
 

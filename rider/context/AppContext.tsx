@@ -31,7 +31,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Check for existing token and load user on mount
   useEffect(() => {
-    const token = localStorage.getItem('weWashRiderToken');
+    const token = localStorage.getItem('PurWashRiderToken');
     if (token) {
       // Try to get profile with token
       riderApi.getProfile()
@@ -40,11 +40,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setUser(response.data.user);
           } else {
             // Token invalid, clear it
-            localStorage.removeItem('weWashRiderToken');
+            localStorage.removeItem('PurWashRiderToken');
           }
         })
         .catch(() => {
-          localStorage.removeItem('weWashRiderToken');
+          localStorage.removeItem('PurWashRiderToken');
         })
         .finally(() => {
           setLoading(false);
@@ -56,10 +56,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     if (user) {
-      localStorage.setItem('weWashRiderUser', JSON.stringify(user));
+      localStorage.setItem('PurWashRiderUser', JSON.stringify(user));
       fetchOrder();
     } else {
-      localStorage.removeItem('weWashRiderUser');
+      localStorage.removeItem('PurWashRiderUser');
       setActiveOrder(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,7 +78,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
       socketRef.current = socket;
 
-      // 2. Set up event listeners for the socket.
+      // 2. Authenticate with WebSocket server
+      socket.emit('authenticate', {
+        userId: user.id,
+        role: user.role || 'rider' // Default to rider for this app
+      });
+
+      // 3. Set up event listeners for the socket.
       socket.on('connect', () => {
         console.log(`WebSocket connected successfully with ID: ${socket.id}`);
       });
@@ -88,6 +94,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         console.log('Received "new_order" event from server:', orderData);
         setActiveOrder(orderData);
         setNotification(`New mission assigned! Order #${orderData.friendlyId}`);
+      });
+
+      // Listen for order status updates
+      socket.on('order_status_update', (data: any) => {
+        console.log('Order status updated:', data);
+        // Update local order state if needed
+        if (activeOrder && activeOrder.id === data.orderId) {
+          setActiveOrder(prev => prev ? { ...prev, status: data.status } : null);
+        }
       });
 
       socket.on('disconnect', () => {
@@ -107,12 +122,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [user]); // This effect depends only on the user object.
 
   const login = (userData: User, token: string) => {
-    localStorage.setItem('weWashRiderToken', token);
+    localStorage.setItem('PurWashRiderToken', token);
     setUser(userData);
   };
 
   const logout = () => {
-    localStorage.removeItem('weWashRiderToken');
+    localStorage.removeItem('PurWashRiderToken');
     setUser(null);
   };
 

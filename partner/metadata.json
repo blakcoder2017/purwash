@@ -1,5 +1,5 @@
 {
-  "name": "weWash Laundry Partner",
-  "description": "A PWA for weWash laundry business partners to manage their incoming laundry orders, track their progress through the washing cycle, and view their earnings.",
+  "name": "PurWash Laundry Partner",
+  "description": "A PWA for PurWash laundry business partners to manage their incoming laundry orders, track their progress through the washing cycle, and view their earnings.",
   "requestFramePermissions": []
 }

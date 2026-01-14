@@ -3,6 +3,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAppContext } from './context/AppContext';
 import LoginScreen from './screens/LoginScreen';
+import RiderRegistrationScreen from './screens/RiderRegistrationScreen';
 import MissionScreen from './screens/MissionScreen';
 import WalletScreen from './screens/WalletScreen';
 import ProfileScreen from './screens/ProfileScreen';
@@ -28,6 +29,7 @@ const App: React.FC = () => {
         <ErrorDisplay />
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
+          <Route path="/register" element={<RiderRegistrationScreen />} />
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </>

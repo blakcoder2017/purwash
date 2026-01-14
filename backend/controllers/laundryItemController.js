@@ -8,7 +8,7 @@ const LaundryItem = require('../models/LaundryItem');
  */
 
 // 1. Get all active laundry items (client catalog)
-exports.getCatalog = async (req, res) => {
+const getCatalog = async (req, res) => {
   try {
     const { 
       category, 
@@ -63,7 +63,7 @@ exports.getCatalog = async (req, res) => {
 };
 
 // 2. Get single item details
-exports.getItem = async (req, res) => {
+const getItem = async (req, res) => {
   try {
     const { slug } = req.params;
     
@@ -83,7 +83,7 @@ exports.getItem = async (req, res) => {
 };
 
 // 3. Get categories and service types (for filters)
-exports.getFilters = async (req, res) => {
+const getFilters = async (req, res) => {
   try {
     const categories = await LaundryItem.distinct('category', { 'availability.isActive': true });
     const serviceTypes = await LaundryItem.distinct('serviceType', { 'availability.isActive': true });
@@ -107,7 +107,7 @@ exports.getFilters = async (req, res) => {
 };
 
 // 4. Get popular items (for homepage)
-exports.getPopularItems = async (req, res) => {
+const getPopularItems = async (req, res) => {
   try {
     const { limit = 8 } = req.query;
     
@@ -126,7 +126,7 @@ exports.getPopularItems = async (req, res) => {
 };
 
 // 5. Admin: Create new item
-exports.createItem = async (req, res) => {
+const createItem = async (req, res) => {
   try {
     const itemData = {
       ...req.body,
@@ -146,7 +146,7 @@ exports.createItem = async (req, res) => {
 };
 
 // 6. Admin: Update item
-exports.updateItem = async (req, res) => {
+const updateItem = async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -172,7 +172,7 @@ exports.updateItem = async (req, res) => {
 };
 
 // 7. Admin: Delete/deactivate item
-exports.deleteItem = async (req, res) => {
+const deleteItem = async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -194,7 +194,7 @@ exports.deleteItem = async (req, res) => {
 };
 
 // 8. Admin: Get all items (including inactive)
-exports.getAllItems = async (req, res) => {
+const getAllItems = async (req, res) => {
   try {
     const { page = 1, limit = 20, includeInactive = false } = req.query;
     
@@ -225,7 +225,7 @@ exports.getAllItems = async (req, res) => {
 };
 
 // 9. Calculate order total for preview
-exports.calculateOrderPreview = async (req, res) => {
+const calculateOrderPreview = async (req, res) => {
   try {
     const { items } = req.body; // [{ itemId, quantity }]
     
@@ -271,4 +271,17 @@ exports.calculateOrderPreview = async (req, res) => {
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
+};
+
+module.exports = {
+  getCatalog,
+  getItem,
+  getFilters,
+  getPopularItems,
+  calculateOrderPreview,
+  // Admin routes
+  createItem,
+  updateItem,
+  deleteItem,
+  getAllItems
 };

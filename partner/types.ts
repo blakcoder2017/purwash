@@ -1,3 +1,29 @@
+export interface User {
+    _id: string;
+    email: string;
+    role: 'partner' | 'rider' | 'client' | 'admin';
+    profile: {
+        firstName: string;
+        lastName: string;
+        phone: string;
+    };
+    businessName?: string;
+    location?: {
+        address: string;
+        lat: number;
+        lng: number;
+    };
+    momo?: {
+        number: string;
+        network: string;
+        resolvedName: string;
+        isVerified: boolean;
+    };
+    paystack?: {
+        subaccountCode: string;
+    };
+}
+
 export interface Item {
     name: string;
     price: number;
@@ -9,7 +35,7 @@ export interface Order {
     _id: string;
     friendlyId: string;
     status: 'dropped_at_laundry' | 'washing' | 'ready_for_pick';
-    client: {
+    client?: {
         phone: string;
         location: {
             addressName: string;
@@ -19,9 +45,19 @@ export interface Order {
             };
         };
     };
+    location?: {
+        addressName: string;
+        coordinates: {
+            lat: number;
+            lng: number;
+        };
+    };
     items: Item[];
     pricing: {
         itemsSubtotal?: number;
+        serviceFee?: number;
+        deliveryFee?: number;
+        systemFee?: number;
         totalAmount: number;
     };
     createdAt: string;
@@ -31,11 +67,27 @@ export interface Order {
         lat: number;
         lng: number;
     };
+    rider?: {
+        profile: {
+            firstName: string;
+            lastName: string;
+            phone: string;
+        };
+    };
+    laundry?: {
+        businessName: string;
+        profile: {
+            firstName: string;
+            lastName: string;
+            phone: string;
+        };
+    };
 }
 
 export enum View {
     Dashboard = 'DASHBOARD',
     Earnings = 'EARNINGS',
+    Profile = 'PROFILE',
 }
 
 export type OrderStatus = 'dropped_at_laundry' | 'washing' | 'ready_for_pick';

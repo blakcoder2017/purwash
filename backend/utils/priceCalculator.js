@@ -22,4 +22,6 @@ const calculateOrderTotal = (items, config) => {
   };
 };
 
-module.exports = { calculateOrderTotal };
+module.exports = {
+  calculateOrderTotal
+};

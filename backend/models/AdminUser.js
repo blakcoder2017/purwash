@@ -49,11 +49,6 @@ const AdminUserSchema = new mongoose.Schema({
       write: { type: Boolean, default: true },
       delete: { type: Boolean, default: false }
     },
-    clients: {
-      read: { type: Boolean, default: true },
-      write: { type: Boolean, default: true },
-      delete: { type: Boolean, default: false }
-    },
     payments: {
       read: { type: Boolean, default: true },
       write: { type: Boolean, default: false },

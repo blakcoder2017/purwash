@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { usePaystackPayment } from 'react-paystack';
-import axios from 'axios';
 import { api } from '../services/api';
 import type { OrderItem, Coordinates, LaundryItem, LocationPayload, CalculatePriceResponseData } from '../types';
 import Spinner from './Spinner';
+import LocationPicker from './LocationPicker';
 
 interface OrderSheetProps {
   isOpen: boolean;
@@ -15,12 +15,15 @@ interface OrderSheetProps {
 const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }) => {
   const [laundryItems, setLaundryItems] = useState<LaundryItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
+  const [activeTab, setActiveTab] = useState<string>('clothing');
   
   const [phone, setPhone] = useState('');
   const [clientName, setClientName] = useState('');
   const [location, setLocation] = useState('');
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [isGpsLocation, setIsGpsLocation] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'momo'>('momo');
+  const [pickupTime, setPickupTime] = useState<string>('');
   
   const [totalAmount, setTotalAmount] = useState(0);
   const [pricingBreakdown, setPricingBreakdown] = useState<CalculatePriceResponseData | null>(null);
@@ -29,9 +32,10 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
   const [isCheckingPhone, setIsCheckingPhone] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [orderCode, setOrderCode] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-
-  const PAYSTACK_PUBLIC_KEY = 'pk_test_d8a22a8101378035ef4507c82a2bb7f16f51cf7c'; // Use your actual test key
+  const [existingClient, setExistingClient] = useState<any>(null);
+  const [paystackPublicKey, setPaystackPublicKey] = useState<string>('');
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -42,26 +46,72 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
         setLaundryItems(response.data || []);
       } catch (err) {
         console.error("Failed to fetch laundry items:", err);
-        setError("Could not load services. Please try again later.");
+        setError('Could not load laundry items. Please refresh the page.');
       } finally {
         setIsItemsLoading(false);
       }
     };
-    fetchItems();
-  }, []);
+    
+    const fetchPaystackConfig = async () => {
+      try {
+        const config = await api.getPaystackConfig();
+        if (config.success) {
+          setPaystackPublicKey(config.data.publicKey);
+        }
+      } catch (err) {
+        console.error("Failed to fetch Paystack config:", err);
+        // Fallback to a default key (should match backend .env)
+        setPaystackPublicKey('pk_test_d89784309f0d8ce5fefdae351b531cecc1c9fa6d');
+      }
+    };
+    
+    if (isOpen) {
+      fetchItems();
+      fetchPaystackConfig();
+      // Set default pickup time to 2 hours from now
+      const defaultTime = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      setPickupTime(defaultTime.toISOString().slice(0, 16));
+    }
+  }, [isOpen]);
 
-  const itemsForApi: OrderItem[] = useMemo(() => {
+  // Group items by category for tabs
+  const categorizedItems = useMemo(() => {
+    const categories: Record<string, LaundryItem[]> = {
+      clothing: [],
+      bedding: [],
+      household: [],
+      specialty: [],
+      accessories: []
+    };
+    
+    laundryItems.forEach(item => {
+      if (categories[item.category]) {
+        categories[item.category].push(item);
+      }
+    });
+    
+    return categories;
+  }, [laundryItems]);
+
+  const tabs = [
+    { id: 'clothing', label: 'Clothing', icon: '👕' },
+    { id: 'bedding', label: 'Bedding', icon: '🛏️' },
+    { id: 'household', label: 'Household', icon: '🏠' },
+    { id: 'specialty', label: 'Specialty', icon: '✨' },
+    { id: 'accessories', label: 'Accessories', icon: '🎒' }
+  ];
+
+  const itemsForApi = useMemo(() => {
     return Object.entries(selectedItems)
+      .filter(([_, quantity]) => (quantity as number) > 0)
       .map(([itemId, quantity]) => {
-        const itemDetails = laundryItems.find(item => item._id === itemId);
-        if (!itemDetails || quantity <= 0) return null;
+        const item = laundryItems.find(i => i._id === itemId);
         return {
-          name: itemDetails.name,
-          price: itemDetails.pricing.clientPrice,
-          quantity,
+          name: item?.name || '',
+          price: (item?.pricing?.clientPrice || 0) as number,
+          quantity
         };
-      })
-      .filter((item): item is OrderItem => item !== null);
+      });
   }, [selectedItems, laundryItems]);
 
   const calculateTotal = useCallback(async () => {
@@ -72,6 +122,7 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
     }
     setError(null);
     setIsCalculatingPrice(true);
+    
     try {
       const response = await api.calculatePrice(itemsForApi);
       setTotalAmount(response.data.totalAmount);
@@ -89,74 +140,89 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
     calculateTotal();
   }, [calculateTotal]);
 
-  const handleQuantityChange = (itemId: string, change: number) => {
-    setError(null);
-    setSelectedItems(prev => {
-      const currentQty = prev[itemId] || 0;
-      const newQty = Math.max(0, currentQty + change);
-      const newSelected = { ...prev };
-      if (newQty === 0) {
-        delete newSelected[itemId];
-      } else {
-        newSelected[itemId] = newQty;
-      }
-      return newSelected;
-    });
-  };
-
   const handlePhoneBlur = async () => {
-    if (phone.length < 10) return;
-    setError(null);
+    if (!phone || phone.length < 10) return;
+    
     setIsCheckingPhone(true);
     try {
+      // Only check for existing client, don't create
       const response = await api.getClient(phone);
-      if (response.success && response.data) {
-        setClientName(response.data.name);
-        setLocation(response.data.savedLocations?.[0]?.address || '');
-        if (response.data.savedLocations?.[0]?.coordinates) {
-          setCoordinates(response.data.savedLocations[0].coordinates);
-        }
+      if (response.success) {
+        setExistingClient(response.data);
+        setClientName(response.data.name || '');
+        console.log('Existing client found:', response.data);
+      } else {
+        setExistingClient(null);
+        console.log('New client - will be created during order placement');
       }
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 404) {
-        console.info('Client not found, new client.');
-        setClientName('');
-        setLocation('');
-        setCoordinates(null);
-      } else {
-        console.error('Error fetching client data:', error);
-        setError("We couldn't check your phone number. Please try again.");
-      }
+      setExistingClient(null);
+      console.log('Client lookup failed, will create during order placement');
     } finally {
       setIsCheckingPhone(false);
     }
   };
 
-  const handleGPS = () => {
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (error) setError(null);
+    setClientName(e.target.value);
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (error) setError(null);
+    setPhone(e.target.value);
+  };
+
+  const handleCreateOrder = async () => {
     setError(null);
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setLocation('Current Location');
-          setCoordinates({ lat: latitude, lng: longitude });
-          setIsGpsLocation(true);
-        },
-        (err) => {
-          setError('Could not get location. Please enter it manually.');
-          console.error('Geolocation error:', err);
-        }
-      );
-    } else {
-      setError('Geolocation is not supported by this browser.');
+    setIsCreatingOrder(true);
+    
+    try {
+      const locationPayload: LocationPayload = {
+        addressName: location,
+        coordinates: coordinates || { lat: 0, lng: 0 }
+      };
+
+      const orderPayload = {
+        items: itemsForApi,
+        phone,
+        clientName,
+        location: locationPayload,
+        paymentMethod,
+        pickupTime: pickupTime ? new Date(pickupTime) : undefined
+      };
+
+      const response = await api.createOrder(orderPayload);
+      if (response.success) {
+        setOrderCode(response.data.trackingCode);
+        setIsSuccess(true);
+        setTimeout(() => {
+          onClose();
+          setIsSuccess(false);
+          setSelectedItems({});
+          setPhone('');
+          setClientName('');
+          setLocation('');
+          setIsGpsLocation(false);
+          setPricingBreakdown(null);
+          setExistingClient(null);
+          setOrderCode('');
+          onTrackOrder();
+        }, 5000); // Longer delay to show order code
+      }
+    } catch (error) {
+      console.error('Order creation failed:', error);
+      setError('Your order could not be placed. Please contact support for assistance.');
+    } finally {
+      setIsCreatingOrder(false);
     }
   };
 
   const config = {
     reference: new Date().getTime().toString(),
     email: `${phone}@purwash.com`,
-    amount: totalAmount * 100, // Amount in pesewas
-    publicKey: PAYSTACK_PUBLIC_KEY,
+    amount: Math.round(totalAmount * 100), // Amount in pesewas, ensure it's an integer
+    publicKey: paystackPublicKey,
   };
 
   const initializePayment = usePaystackPayment(config);
@@ -167,32 +233,35 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
     try {
       const locationPayload: LocationPayload = {
         addressName: location,
-        coordinates,
-        ...(isGpsLocation && { saveAsLocation: true, locationLabel: 'Current Location' })
+        coordinates: coordinates || { lat: 0, lng: 0 }
       };
 
-      const response = await api.createOrder({
+      const orderPayload = {
         items: itemsForApi,
         phone,
         clientName,
         location: locationPayload,
-        paystackReference: reference.reference,
-      });
-      
-      // Show success with order details
-      setIsSuccess(true);
-      setTimeout(() => {
-        onClose();
-        setIsSuccess(false);
-        setSelectedItems({});
-        setPhone('');
-        setClientName('');
-        setLocation('');
-        setIsGpsLocation(false);
-        setPricingBreakdown(null);
-        // Redirect to tracking after successful order
-        onTrackOrder();
-      }, 3000);
+        paystackReference: reference.reference
+      };
+
+      const response = await api.createOrder(orderPayload);
+      if (response.success) {
+        setOrderCode(response.data.trackingCode);
+        setIsSuccess(true);
+        setTimeout(() => {
+          onClose();
+          setIsSuccess(false);
+          setSelectedItems({});
+          setPhone('');
+          setClientName('');
+          setLocation('');
+          setIsGpsLocation(false);
+          setPricingBreakdown(null);
+          setExistingClient(null);
+          setOrderCode('');
+          onTrackOrder();
+        }, 5000); // Longer delay to show order code
+      }
     } catch (error) {
       console.error('Order creation failed:', error);
       setError('Your order could not be placed. Please contact support for assistance.');
@@ -202,22 +271,18 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
   };
 
   const handlePaymentClose = () => console.log('Payment window closed.');
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (error) setError(null);
-    setPhone(e.target.value);
-  };
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (error) setError(null);
-    setClientName(e.target.value);
-  };
-  const handleLocationChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (error) setError(null);
-    setLocation(e.target.value);
-    setIsGpsLocation(false);
+
+  const updateQuantity = (itemId: string, quantity: number) => {
+    if (quantity <= 0) {
+      const newSelected = { ...selectedItems };
+      delete newSelected[itemId];
+      setSelectedItems(newSelected);
+    } else {
+      setSelectedItems(prev => ({ ...prev, [itemId]: quantity }));
+    }
   };
 
   const isFormValid = phone && clientName && location && itemsForApi.length > 0 && totalAmount > 0;
-  
   const totalItems = useMemo(() => Object.values(selectedItems).reduce((acc, qty) => acc + qty, 0), [selectedItems]);
 
   if (isSuccess) {
@@ -230,129 +295,222 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           className="bg-white w-full max-w-lg rounded-t-2xl p-6 h-1/2 flex flex-col items-center justify-center text-center"
         >
-          <svg className="w-24 h-24 text-green-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-          <h2 className="text-2xl font-bold text-slate-900">Order Placed!</h2>
-          <p className="text-slate-600 mt-2">Your rider has been dispatched. We'll be in touch shortly.</p>
+          <div className="text-green-500 text-6xl mb-4">✓</div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Order Placed Successfully!</h3>
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+            <p className="text-sm text-gray-600 mb-1">Your order code is:</p>
+            <p className="text-2xl font-bold text-blue-600">{orderCode}</p>
+          </div>
+          <p className="text-gray-600 mb-2">Save this code to track your order</p>
+          <p className="text-sm text-gray-500">You'll receive updates via WhatsApp/SMS</p>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="fixed inset-0 bg-black bg-opacity-50 z-40"
-      />
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-end justify-center">
       <motion.div
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="fixed bottom-0 left-0 right-0 bg-white w-full max-w-lg mx-auto rounded-t-2xl p-6 z-50 max-h-[90vh] overflow-y-auto"
+        className="bg-white w-full max-w-2xl rounded-t-2xl max-h-[90vh] overflow-hidden flex flex-col"
       >
-        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4"></div>
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-slate-900">Your Wash Details</h2>
-          <button onClick={onTrackOrder} className="text-sm font-semibold text-slate-900 hover:underline">
-              Track Order
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900">Place Order</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+          >
+            ×
           </button>
         </div>
-        
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-slate-700 mb-2">Select Services</label>
-          {isItemsLoading ? <div className="flex justify-center p-8"><Spinner /></div> : (
-            <div className="space-y-3">
-              {laundryItems.map(item => (
-                <div key={item._id} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg">
-                  <div className="flex-1 pr-2">
-                    <p className="font-semibold text-slate-900">{item.name}</p>
-                    <p className="text-sm text-slate-500">₵{item.pricing.clientPrice.toFixed(2)}</p>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <button onClick={() => handleQuantityChange(item._id, -1)} className="w-8 h-8 rounded-full bg-slate-200 text-slate-800 font-bold text-lg flex items-center justify-center">-</button>
-                    <span className="font-bold text-lg w-8 text-center">{selectedItems[item._id] || 0}</span>
-                    <button onClick={() => handleQuantityChange(item._id, 1)} className="w-8 h-8 rounded-full bg-slate-900 text-white font-bold text-lg flex items-center justify-center">+</button>
-                  </div>
-                </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Error Display */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          {/* Client Info */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-gray-900">Client Information</h3>
+            
+            {existingClient && (
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+                <p className="font-medium">Welcome back, {existingClient.name}!</p>
+                <p className="text-sm">Found your account. Orders: {existingClient.totalOrders || 0}</p>
+                {existingClient.recentOrders && existingClient.recentOrders.length > 0 && (
+                  <p className="text-sm">Recent orders: {existingClient.recentOrders.map((o: any) => o.friendlyId).join(', ')}</p>
+                )}
+              </div>
+            )}
+
+            {!existingClient && phone && phone.length >= 10 && !isCheckingPhone && (
+              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg">
+                <p className="font-medium">New Customer</p>
+                <p className="text-sm">Account will be created automatically when you place your order</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={handlePhoneChange}
+                  onBlur={handlePhoneBlur}
+                  placeholder="0551234567"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                {isCheckingPhone && <p className="text-sm text-blue-600 mt-1">Checking...</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={clientName}
+                  onChange={handleNameChange}
+                  placeholder="Your Name"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Pickup Location</label>
+              <LocationPicker
+                onLocationSelect={(address, coords) => {
+                  setLocation(address);
+                  setCoordinates(coords);
+                  setIsGpsLocation(false);
+                }}
+                initialAddress={location}
+                initialCoordinates={coordinates || undefined}
+              />
+            </div>
+          </div>
+
+          {/* Item Selection with Tabs */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-gray-900">Select Items</h3>
+            
+            {/* Tabs */}
+            <div className="flex space-x-1 border-b border-gray-200">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <span className="mr-1">{tab.icon}</span>
+                  {tab.label}
+                </button>
               ))}
+            </div>
+
+            {/* Items Grid */}
+            {isItemsLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {categorizedItems[activeTab]?.map(item => (
+                  <div key={item._id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-medium text-gray-900">{item.name}</h4>
+                        <p className="text-sm text-gray-500">{item.serviceType?.replace('_', ' ')}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-gray-900">₵{item.pricing?.clientPrice || 0}</p>
+                        <p className="text-xs text-gray-500">{item.estimatedProcessingHours}h</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => updateQuantity(item._id, (selectedItems[item._id] || 0) - 1)}
+                        className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                      >
+                        -
+                      </button>
+                      <span className="w-8 text-center">{selectedItems[item._id] || 0}</span>
+                      <button
+                        onClick={() => updateQuantity(item._id, (selectedItems[item._id] || 0) + 1)}
+                        className="w-8 h-8 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Pricing Breakdown */}
+          {pricingBreakdown && (
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-gray-900 mb-3">Order Summary</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>{totalItems} Item{totalItems !== 1 ? 's' : ''}</span>
+                  <span>₵{pricingBreakdown.baseCost?.toFixed(2) || '0.00'}</span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>Delivery Fee</span>
+                  <span>₵{pricingBreakdown.deliveryFee?.toFixed(2) || '0.00'}</span>
+                </div>
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>Platform Fee ({pricingBreakdown.config?.platformFeePercentage || 0}%)</span>
+                  <span>₵{pricingBreakdown.platformPercentageFee?.toFixed(2) || '0.00'}</span>
+                </div>
+                <div className="border-t border-gray-300 my-2"></div>
+                <div className="flex justify-between items-center font-bold text-gray-900 text-lg">
+                  <span>Total</span>
+                  <span>₵{pricingBreakdown.totalAmount?.toFixed(2) || '0.00'}</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="space-y-4 mb-6">
-          <div>
-            <label htmlFor="phone" className="block text-sm font-medium text-slate-700">Phone Number</label>
-            <div className="relative">
-              <input type="tel" id="phone" value={phone} onChange={handlePhoneChange} onBlur={handlePhoneBlur} className="mt-1 block w-full border-slate-300 rounded-md shadow-sm p-3 text-lg focus:ring-slate-900 focus:border-slate-900" placeholder="055 123 4567" />
-              {isCheckingPhone && <div className="absolute right-3 top-1/2 -translate-y-1/2"><Spinner /></div>}
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm text-gray-600">Total Amount</p>
+              <p className="text-2xl font-bold text-gray-900">₵{totalAmount.toFixed(2)}</p>
             </div>
-          </div>
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-slate-700">Full Name</label>
-            <input type="text" id="name" value={clientName} onChange={handleNameChange} className="mt-1 block w-full border-slate-300 rounded-md shadow-sm p-3 text-lg focus:ring-slate-900 focus:border-slate-900" placeholder="John Doe" />
-          </div>
-          <div>
-            <label htmlFor="location" className="block text-sm font-medium text-slate-700 mb-1">Pickup Location</label>
-            <textarea id="location" rows={3} value={location} onChange={handleLocationChange} className="block w-full border-slate-300 rounded-md shadow-sm p-3 text-lg focus:ring-slate-900 focus:border-slate-900" placeholder="e.g. Blue gate opposite the fuel station"></textarea>
-            <button onClick={handleGPS} className="mt-2 text-sm font-semibold text-slate-900 flex items-center space-x-1">
-              <span role="img" aria-label="location pin">📍</span>
-              <span>Use current location</span>
+            <button
+              onClick={() => {
+                if (paymentMethod === 'momo') {
+                  initializePayment(handlePaymentSuccess, handlePaymentClose);
+                } else {
+                  handleCreateOrder();
+                }
+              }}
+              disabled={!isFormValid || isCreatingOrder || isCalculatingPrice}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            >
+              {(isCreatingOrder || isCalculatingPrice) && <Spinner />}
+              <span>{isCreatingOrder ? 'Processing...' : paymentMethod === 'momo' ? 'Pay Now' : 'Place Order'}</span>
             </button>
           </div>
         </div>
-
-        <div className="bg-slate-50 p-4 rounded-lg">
-          {pricingBreakdown ? (
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-slate-600">
-                <span>{totalItems} Item{totalItems !== 1 ? 's' : ''}</span>
-                <span>₵{pricingBreakdown.pricing.items.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span>Delivery</span>
-                <span>₵{pricingBreakdown.pricing.delivery.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span>System Fee ({pricingBreakdown.config.platformCommission}%)</span>
-                <span>₵{pricingBreakdown.pricing.system.split(' ')[1]?.replace(/[()]/g, '') || '0.00'}</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span>Per-Item Fee</span>
-                <span>{pricingBreakdown.pricing.perItem}</span>
-              </div>
-              <div className="border-t border-slate-200 my-2"></div>
-              <div className="flex justify-between items-center font-bold text-slate-900 text-lg">
-                <span>Total</span>
-                <span>{isCalculatingPrice ? <Spinner className="w-4 h-4" /> : `₵${totalAmount.toFixed(2)}`}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex justify-between items-center font-bold text-slate-900 text-lg">
-              <span>Total</span>
-              <span>{isCalculatingPrice ? <Spinner className="w-4 h-4" /> : `₵${totalAmount.toFixed(2)}`}</span>
-            </div>
-          )}
-        </div>
-
-        {error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-300 text-red-800 rounded-lg text-sm text-center" role="alert">
-            <p>{error}</p>
-          </div>
-        )}
-
-        <button 
-          onClick={() => initializePayment(handlePaymentSuccess, handlePaymentClose)}
-          disabled={!isFormValid || isCalculatingPrice || isCreatingOrder || isItemsLoading}
-          className="mt-6 w-full bg-slate-900 text-white font-bold py-4 px-4 rounded-xl text-lg flex items-center justify-center transition-all duration-300 disabled:bg-slate-400 disabled:cursor-not-allowed"
-        >
-          {isCreatingOrder ? <Spinner /> : `Pay ₵${totalAmount.toFixed(2)}`}
-        </button>
       </motion.div>
-    </>
+    </div>
   );
 };
 

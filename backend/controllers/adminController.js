@@ -10,8 +10,7 @@ exports.getDashboardStats = async (req, res) => {
     const pendingOrders = await Order.countDocuments({ status: 'created' });
     const activeRiders = await User.countDocuments({ role: 'rider', isActive: true });
     const activePartners = await User.countDocuments({ role: 'partner', isActive: true });
-    const totalClients = await Client.countDocuments({ isActive: true });
-    
+
     // Revenue calculations
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const recentOrders = await Order.find({ 
@@ -28,7 +27,6 @@ exports.getDashboardStats = async (req, res) => {
         pendingOrders, 
         activeRiders, 
         activePartners,
-        totalClients,
         monthlyRevenue,
         recentOrders: [] // Add empty recentOrders array for compatibility
       }

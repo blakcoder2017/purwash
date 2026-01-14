@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const {
   getWalletData,
   getTransactionHistory,
@@ -13,12 +13,12 @@ const {
  */
 
 // Get wallet overview with balance and recent activity
-router.get('/', protect, getWalletData);
+router.get('/', authenticateToken, getWalletData);
 
 // Get transaction history with pagination and filtering
-router.get('/transactions', protect, getTransactionHistory);
+router.get('/transactions', authenticateToken, getTransactionHistory);
 
 // Get earnings summary for different periods
-router.get('/summary', protect, getEarningsSummary);
+router.get('/summary', authenticateToken, getEarningsSummary);
 
 module.exports = router;

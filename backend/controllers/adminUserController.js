@@ -18,7 +18,7 @@ const getDashboardStats = async (req, res) => {
     const totalOrders = await Order.countDocuments();
     const pendingOrders = await Order.countDocuments({ status: 'created' });
     const activeRiders = await User.countDocuments({ role: 'rider', isActive: true });
-    const activeClients = await Client.countDocuments({ isActive: true });
+  
     const activePartners = await User.countDocuments({ role: 'partner', isActive: true });
     
     // Get recent orders
@@ -35,7 +35,6 @@ const getDashboardStats = async (req, res) => {
         totalOrders,
         pendingOrders,
         activeRiders,
-        activeClients,
         activePartners,
         recentOrders
       }
@@ -91,38 +90,6 @@ const getOrders = async (req, res) => {
   }
 };
 
-const getClients = async (req, res) => {
-  try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (page - 1) * limit;
-
-    const clients = await Client.find()
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await Client.countDocuments();
-
-    res.json({
-      success: true,
-      data: {
-        clients,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / limit)
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Get clients error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to get clients'
-    });
-  }
-};
 
 const getPartners = async (req, res) => {
   try {
@@ -674,7 +641,6 @@ module.exports = {
   updateCurrentAdmin,
   getDashboardStats,
   getOrders,
-  getClients,
   getPartners,
   getRiders
 };

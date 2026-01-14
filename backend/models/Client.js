@@ -127,7 +127,6 @@ const clientSchema = new Schema({
 });
 
 // Indexes for performance
-clientSchema.index({ phone: 1 });
 clientSchema.index({ isActive: 1 });
 clientSchema.index({ createdAt: -1 });
 clientSchema.index({ totalOrders: -1 });
@@ -194,7 +193,14 @@ clientSchema.methods.getDefaultLocation = function() {
 };
 
 // Pre-save middleware to ensure only one default location
+// Temporarily disabled for debugging
+/*
 clientSchema.pre('save', function(next) {
+  // Skip validation for new clients without saved locations
+  if (this.isNew && (!this.savedLocations || this.savedLocations.length === 0)) {
+    return next();
+  }
+  
   const defaultLocations = this.savedLocations.filter(loc => loc.isDefault);
   if (defaultLocations.length > 1) {
     // Keep only the first one as default
@@ -206,6 +212,7 @@ clientSchema.pre('save', function(next) {
   }
   next();
 });
+*/
 
 const Client = mongoose.model('Client', clientSchema);
 

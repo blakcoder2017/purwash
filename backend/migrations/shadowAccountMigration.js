@@ -20,22 +20,7 @@ async function migrateToShadowAccounts() {
     console.log('✅ Connected to MongoDB');
     
     // Step 1: Update existing clients to support shadow account fields
-    console.log('📝 Updating existing clients...');
-    const clientUpdateResult = await Client.updateMany(
-      { 
-        isShadowAccount: { $exists: false },
-        hasFullAccount: { $exists: false }
-      },
-      { 
-        $set: { 
-          isShadowAccount: false, // Existing clients had full accounts
-          hasFullAccount: true,
-          lastOrderDate: null
-        }
-      }
-    );
-    console.log(`✅ Updated ${clientUpdateResult.modifiedCount} existing clients`);
-    
+  
     // Step 2: Update existing orders to link with client accounts
     console.log('📦 Updating existing orders...');
     const orders = await Order.find({ 
@@ -109,11 +94,9 @@ async function migrateToShadowAccounts() {
     const linkedOrderCount = await Order.countDocuments({ 'client.clientId': { $exists: true } });
     
     console.log('\n📊 Migration Summary:');
-    console.log(`Total Clients: ${clientCount}`);
     console.log(`Shadow Accounts: ${shadowClientCount}`);
     console.log(`Full Accounts: ${fullAccountCount}`);
     console.log(`Total Orders: ${orderCount}`);
-    console.log(`Orders Linked to Clients: ${linkedOrderCount}`);
     
     console.log('\n✅ Migration completed successfully!');
     

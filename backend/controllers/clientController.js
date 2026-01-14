@@ -2,12 +2,14 @@ const Client = require('../models/Client');
 const Order = require('../models/Order');
 
 /**
- * Get client by phone number
+ * Get client by phone number with auto-creation option
  * GET /api/clients/:phone
+ * Query params: ?create=true (auto-create if not found)
  */
 const getClientByPhone = async (req, res) => {
   try {
     const { phone } = req.params;
+    const { create = false, name } = req.query;
 
     if (!phone) {
       return res.status(400).json({
@@ -16,18 +18,50 @@ const getClientByPhone = async (req, res) => {
       });
     }
 
-    const client = await Client.findOne({ phone });
+    let client = await Client.findOne({ phone });
     
     if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client not found'
-      });
+      // Auto-create client if requested
+      if (create === 'true') {
+        try {
+          client = new Client({
+            phone,
+            name: name || 'Customer'
+          });
+          await client.save();
+          console.log(`✅ Auto-created new client: ${phone}`);
+        } catch (error) {
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to create client',
+            error: error.message
+          });
+        }
+      } else {
+        return res.status(404).json({
+          success: false,
+          message: 'Client not found'
+        });
+      }
     }
+
+    // Get client's recent orders for better UX
+    const recentOrders = await Order.find({ 
+      'client.clientId': client._id,
+      status: { $nin: ['delivered', 'cancelled'] }
+    })
+    .sort({ createdAt: -1 })
+    .limit(3)
+    .select('friendlyId status totalAmount createdAt');
 
     res.json({
       success: true,
-      data: client
+      data: {
+        ...client.toObject(),
+        recentOrders: recentOrders || [],
+        isActive: true,
+        isNewClient: !client.createdAt || (Date.now() - client.createdAt.getTime() < 60000) // Created within last minute
+      }
     });
 
   } catch (error) {

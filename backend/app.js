@@ -17,11 +17,23 @@ const adminRoutes = require('./routes/adminRoutes');
 const laundryItemRoutes = require('./routes/laundryItemRoutes');
 const authRoutes = require('./routes/auth');
 const partnerRegistrationRoutes = require('./routes/partnerRegistration');
+const walletRoutes = require('./routes/walletRoutes');
 
 const app = express();
 
 // 1) GLOBAL SECURITY HEADERS
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        'script-src': ["'self'", 'https://api.paystack.co', 'https://js.paystack.co', 'https://checkout.paystack.co'],
+        'script-src-elem': ["'self'", 'https://api.paystack.co', 'https://js.paystack.co', 'https://checkout.paystack.co'],
+        'connect-src': ["'self'", 'https://api.paystack.co', 'https://checkout.paystack.co'],
+        'frame-src': ["'self'", 'https://checkout.paystack.co'],
+      },
+    },
+  })
+);
 
 // 2) CORS CONFIGURATION
 const corsOptions = {
@@ -69,19 +81,29 @@ app.use('/api/partner-registration', partnerRegistrationRoutes);
 
 app.use('/api/v1/manage', manageRoutes);
 app.use('/api/v1/payments', paystackRoutes);
-app.use('/api/users', userRoutes); // Added back
-// app.use('/api/orders', orderRoutes); // Temporarily commented
-app.use('/api/clients', clientRoutes); // Added back
+app.use('/api/users', userRoutes); // Temporarily commented
+app.use('/api/orders', orderRoutes); // Temporarily commented
+app.use('/api/clients', clientRoutes);
 app.use('/api/admin', adminRoutes); // Admin routes (protected)
-app.use('/api/catalog', laundryItemRoutes); // Added back
+app.use('/api/catalog', laundryItemRoutes); // Temporarily commented
 app.use('/api/webhook', webhookRoutes); // Webhook routes
-app.use('/api/wallet', require('./routes/walletRoutes')); // Added back
+app.use('/api/wallet', walletRoutes); // Temporarily commented
 
 
 // 7) HEALTH CHECK
 app.get('/', (req, res) => res.send('weWash API is live '));
 
-// 8) FAVICON
+// 8) PAYSTACK CONFIG ENDPOINT
+app.get('/api/config/paystack', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      publicKey: process.env.PAYSTACK_PUBLIC_KEY || 'pk_test_d89784309f0d8ce5fefdae351b531cecc1c9fa6d'
+    }
+  });
+});
+
+// 9) FAVICON
 app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });

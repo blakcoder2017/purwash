@@ -165,16 +165,27 @@ const verifyPaystackPayment = async (reference) => {
 };
 
 /**
- * Generate friendly order ID
- * @returns {string} Friendly order ID (e.g., "WASH-8291")
+ * Generate simple order code (4-6 digit alphanumeric)
+ * @returns {string} Order code (e.g., "W7K4" or "LW-5821")
  */
-const generateFriendlyId = () => {
-  const randomNum = Math.floor(1000 + Math.random() * 9000);
-  return `WASH-${randomNum}`;
+const generateOrderCode = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const codeLength = Math.floor(Math.random() * 3) + 4; // 4-6 characters
+  let code = '';
+  
+  for (let i = 0; i < codeLength; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  
+  // Add prefix for better branding
+  const prefixes = ['WASH-', 'PW-', 'LW-'];
+  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+  
+  return prefix + code;
 };
 
 /**
- * Create Order - Main endpoint for seamless client onboarding
+ * Create Order - Guest Checkout with Auto-Generated Code
  * POST /api/orders
  */
 const createOrder = async (req, res) => {
@@ -183,7 +194,15 @@ const createOrder = async (req, res) => {
   try {
     // Start transaction
     await session.withTransaction(async () => {
-      const { items, phone, clientName, location, paystackReference } = req.body;
+      const { 
+        items, 
+        phone, 
+        clientName, 
+        location, 
+        paymentMethod = 'momo', // Default to mobile money
+        pickupTime,
+        paystackReference // Optional for Paystack payments
+      } = req.body;
 
       // Validate required fields
       if (!items || !Array.isArray(items) || items.length === 0) {
@@ -197,173 +216,149 @@ const createOrder = async (req, res) => {
       if (!location || !location.addressName) {
         throw new Error('Location information is required');
       }
-      
-      if (!paystackReference) {
-        throw new Error('Paystack reference is required');
+
+      // For Paystack payments, verify payment
+      if (paymentMethod === 'momo' && paystackReference) {
+        console.log('🔍 Verifying payment with Paystack...');
+        const paymentVerification = await verifyPaystackPayment(paystackReference);
+        
+        // Calculate pricing
+        const pricing = await calculatePricing(items);
+        
+        // Verify payment amount matches our calculation
+        if (Math.abs(paymentVerification.amount - pricing.totalAmount) > 1) {
+          throw new Error(`Payment amount mismatch. Expected: ₵${pricing.totalAmount}, Paid: ₵${paymentVerification.amount}`);
+        }
       }
 
-      // Step 1: Verify payment with Paystack
-      console.log('🔍 Verifying payment with Paystack...');
-      const paymentVerification = await verifyPaystackPayment(paystackReference);
+      // Step 1: Generate unique order code
+      const orderCode = generateOrderCode();
       
       // Step 2: Calculate pricing
       console.log('💰 Calculating order pricing...');
       const pricing = await calculatePricing(items);
-      
-      // Verify payment amount matches our calculation
-      if (Math.abs(paymentVerification.amount - pricing.totalAmount) > 1) {
-        throw new Error(`Payment amount mismatch. Expected: ₵${pricing.totalAmount}, Paid: ₵${paymentVerification.amount}`);
-      }
 
-      // Step 3: Handle client auto-onboarding
-      console.log('👤 Processing client auto-onboarding...');
+      // Step 3: Handle soft client creation (invisible to user)
+      console.log('👤 Processing soft client creation...');
       let client;
       
       try {
-        client = await Client.findOrCreateByPhone(phone, clientName);
-        console.log(`✅ Client ${client._id} ${client.isNew ? 'created' : 'found'}`);
+        // Simple approach: find or create without using the problematic static method
+        client = await Client.findOne({ phone });
+        
+        if (!client) {
+          console.log('Creating new client...');
+          client = new Client({
+            phone,
+            name: clientName || 'Customer'
+          });
+          await client.save();
+          console.log(`✅ New client created: ${client._id}`);
+        } else {
+          console.log(`✅ Existing client found: ${client._id}`);
+          // Update name if different
+          if (clientName && client.name !== clientName) {
+            client.name = clientName;
+            await client.save();
+          }
+        }
       } catch (error) {
         throw new Error(`Client processing failed: ${error.message}`);
       }
 
-      // Step 4: Create order
+      // Step 4: Create order with simplified structure
       console.log('📦 Creating order...');
-      const friendlyId = generateFriendlyId();
-      
       const orderData = {
-        friendlyId,
+        friendlyId: orderCode,
+        code: orderCode, // Simple tracking code
         client: {
           clientId: client._id,
-          phone: client.phone,
-          name: client.name
+          phone: phone,
+          clientName: clientName || client.name,
+          location: {
+            addressName: location.addressName,
+            coordinates: location.coordinates || { lat: 0, lng: 0 }
+          }
         },
-        items: items.map(item => ({
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity
-        })),
-        location: {
-          addressName: location.addressName,
-          coordinates: location.coordinates || { lat: 0, lng: 0 }
-        },
+        items: items,
         pricing: {
-          itemsSubtotal: pricing.itemsSubtotal,
-          serviceFee: pricing.serviceFee,
+          itemsSubtotal: pricing.baseCost,
+          serviceFee: pricing.platformPercentageFee + pricing.platformItemCommission,
           deliveryFee: pricing.deliveryFee,
-          systemFee: pricing.systemFee,
+          systemFee: 0, // Simplified
           totalAmount: pricing.totalAmount
         },
+        status: 'created', // Use valid enum value
+        paymentMethod: paymentMethod,
+        paymentStatus: paymentMethod === 'cash' ? 'pending' : 'success',
+        pickupTime: pickupTime || new Date(Date.now() + 2 * 60 * 60 * 1000), // Default 2 hours
+        createdAt: new Date(),
+        // Add required paymentDetails for schema compatibility
         paymentDetails: {
-          reference: paystackReference,
-          channel: 'paystack',
-          status: 'paid',
-          paidAt: new Date(paymentVerification.paidAt),
-          amount: pricing.totalAmount
-        },
-        status: 'created',
-        convertedToClientOrder: true,
-        isGuestOrder: false,
-        createdAt: new Date()
+          reference: paystackReference || `CASH-${orderCode}`, // Generate reference for cash orders
+          channel: paymentMethod === 'momo' ? 'mobile_money' : 'card', // Use valid enum values
+          status: paymentMethod === 'cash' ? 'pending' : 'success',
+          amount: pricing.totalAmount,
+          paidAt: paymentMethod === 'momo' && paystackReference ? new Date() : undefined
+        }
       };
 
       const order = new Order(orderData);
       await order.save({ session });
 
-      // Step 5: Update client statistics
-      await client.updateOrderStats(pricing.totalAmount);
+      // Step 5: Update client stats (soft account)
+      await Client.findByIdAndUpdate(
+        client._id,
+        { 
+          $inc: { totalOrders: 1, totalSpent: pricing.totalAmount },
+          $set: { lastOrderDate: new Date() }
+        },
+        { session }
+      );
 
-      // Step 6: Add location to client's saved locations if not already saved
-      if (location.saveAsLocation) {
-        await client.addSavedLocation({
-          label: location.locationLabel || 'Home',
-          address: location.addressName,
-          coordinates: location.coordinates,
-          isDefault: client.savedLocations.length === 0
-        });
+      // Step 6: Save location for future convenience
+      if (location.addressName) {
+        await Client.findByIdAndUpdate(
+          client._id,
+          {
+            $push: {
+              savedLocations: {
+                label: 'Default Pickup',
+                address: location.addressName,
+                coordinates: location.coordinates || { lat: 0, lng: 0 },
+                isDefault: true,
+                createdAt: new Date()
+              }
+            }
+          },
+          { session }
+        );
       }
 
-      // Step 7: Create commissions if order is confirmed (auto-confirm for seamless client)
-      // Since this is a seamless client strategy, we auto-confirm the order
-      order.isConfirmedByClient = true;
-      order.confirmedAt = new Date();
-      await order.save({ session });
-      
-      // Create commissions for rider and partner (if assigned)
-      // Note: Commissions will be created when rider/partner are assigned later
-      await createOrderCommissions(order, 'client');
+      console.log(`✅ Order created: ${orderCode}`);
 
-      console.log(`✅ Order ${friendlyId} created and confirmed successfully`);
-
-      // Return success response with full breakdown
       res.status(201).json({
         success: true,
-        message: 'Order created successfully',
         data: {
           order: {
-            _id: order._id,
-            friendlyId: order.friendlyId,
+            friendlyId: orderCode,
+            code: orderCode,
             status: order.status,
-            totalAmount: order.pricing.totalAmount,
-            createdAt: order.createdAt
+            totalAmount: pricing.totalAmount,
+            pickupTime: order.pickupTime,
+            phone: phone
           },
-          client: {
-            _id: client._id,
-            phone: client.phone,
-            name: client.name,
-            totalOrders: client.totalOrders
-          },
-          pricing: pricing.breakdown,
-          config: pricing.config,
-          payment: {
-            reference: paystackReference,
-            amount: pricing.totalAmount,
-            status: 'paid',
-            paidAt: paymentVerification.paidAt
-          }
+          message: `Order placed successfully! Your order code is: ${orderCode}`,
+          trackingCode: orderCode
         }
       });
     });
 
   } catch (error) {
     console.error('❌ Order creation failed:', error);
-    
-    // Handle specific error types
-    if (error.message.includes('Payment verification failed')) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment verification failed',
-        error: error.message
-      });
-    }
-    
-    if (error.message.includes('Payment amount mismatch')) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment amount does not match order total',
-        error: error.message
-      });
-    }
-    
-    if (error.message.includes('Minimum order amount')) {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-        error: error.message
-      });
-    }
-    
-    if (error.message.includes('duplicate key')) {
-      return res.status(409).json({
-        success: false,
-        message: 'Duplicate phone number or order reference',
-        error: error.message
-      });
-    }
-    
-    res.status(500).json({
+    res.status(400).json({
       success: false,
-      message: 'Order creation failed',
-      error: error.message
+      message: error.message || 'Failed to create order'
     });
   } finally {
     await session.endSession();
@@ -371,8 +366,231 @@ const createOrder = async (req, res) => {
 };
 
 /**
- * Track orders by phone number
- * GET /api/orders/track/:phone
+ * Track Order by Phone and Code - No Login Required
+ * GET /api/orders/track/:phone/:code
+ */
+const trackOrderByPhoneAndCode = async (req, res) => {
+  try {
+    const { phone, code } = req.params;
+
+    if (!phone || !code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number and order code are required'
+      });
+    }
+
+    // Find order by phone and code
+    const order = await Order.findOne({
+      'client.phone': phone,
+      $or: [
+        { friendlyId: code },
+        { code: code }
+      ]
+    })
+    .populate('client.clientId', 'name phone totalOrders');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Calculate ETA based on status
+    let eta = null;
+    const now = new Date();
+    
+    switch (order.status) {
+      case 'created':
+        eta = new Date(order.pickupTime || now.getTime() + 2 * 60 * 60 * 1000);
+        break;
+      case 'on_my_way_to_pick':
+        eta = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes for pickup
+        break;
+      case 'picked_up':
+        eta = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4 hours for washing
+        break;
+      case 'washing':
+        eta = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours remaining
+        break;
+      case 'ready_for_pick':
+        eta = new Date(now.getTime() + 1 * 60 * 60 * 1000); // 1 hour for delivery
+        break;
+      case 'out_for_delivery':
+        eta = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes
+        break;
+      default:
+        eta = null;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        order: {
+          friendlyId: order.friendlyId,
+          code: order.code,
+          status: order.status,
+          totalAmount: order.pricing.totalAmount,
+          pickupTime: order.pickupTime,
+          createdAt: order.createdAt,
+          items: order.items,
+          location: order.client.location, // Use client location
+          paymentMethod: order.paymentMethod,
+          paymentStatus: order.paymentStatus
+        },
+        client: order.client.clientId,
+        rider: null, // No rider assigned yet
+        eta: eta,
+        statusMessage: getStatusMessage(order.status)
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Track order failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to track order'
+    });
+  }
+};
+
+/**
+ * Get status message for order
+ */
+const getStatusMessage = (status) => {
+  const messages = {
+    created: '📦 Order placed - Waiting for pickup',
+    assigned: '📋 Rider assigned to your order',
+    on_my_way_to_pick: '🚴 Rider is on the way to pickup',
+    picked_up: '🚴 Rider has picked up your laundry',
+    dropped_at_laundry: '🏢 Laundry received at facility',
+    washing: '🧼 Your laundry is being washed',
+    ready_for_pick: '✅ Laundry ready for delivery',
+    out_for_delivery: '🚚 Rider is on the way with your clean laundry',
+    delivered: '🎉 Order delivered successfully',
+    cancelled: '❌ Order cancelled'
+  };
+  
+  return messages[status] || '📦 Processing your order';
+};
+
+/**
+ * Get pricing breakdown before payment
+ * POST /api/orders/calculate
+ */
+const calculateOrderPricingHandler = async (req, res) => {
+  try {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Items array is required'
+      });
+    }
+
+    const pricing = await calculatePricing(items);
+
+    res.json({
+      success: true,
+      data: {
+        baseCost: pricing.baseCost,
+        platformPercentageFee: pricing.platformPercentageFee,
+        platformItemCommission: pricing.platformItemCommission,
+        deliveryFee: pricing.deliveryFee,
+        totalAmount: pricing.totalAmount,
+        config: pricing.config
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Price calculation failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to calculate price',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Calculate pricing for order items
+ */
+const calculatePricing = async (items) => {
+  const config = await getPricingConfig();
+  
+  // Calculate base cost
+  const itemsSubtotal = items.reduce((total, item) => {
+    return total + (item.price * item.quantity);
+  }, 0);
+
+  // Calculate fees
+  const platformPercentageFee = (itemsSubtotal * config.platformFeePercentage) / 100;
+  const platformItemCommission = items.length * config.platformPerItemFee;
+  const deliveryFee = config.deliveryFee;
+  
+  const totalAmount = itemsSubtotal + platformPercentageFee + platformItemCommission + deliveryFee;
+
+  return {
+    baseCost: itemsSubtotal,
+    platformPercentageFee,
+    platformItemCommission,
+    deliveryFee,
+    totalAmount,
+    config,
+    breakdown: {
+      items: itemsSubtotal,
+      delivery: deliveryFee,
+      system: `(${config.platformFeePercentage}% + ₵${config.platformPerItemFee} per item)`,
+      perItem: `₵${config.platformPerItemFee} × ${items.length}`,
+      total: totalAmount
+    }
+  };
+};
+
+/**
+ * Get order by ID
+ */
+const getOrderById = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order ID is required'
+      });
+    }
+
+    const order = await Order.findOne({ friendlyId: orderId })
+      .populate('client.clientId', 'name phone')
+      .populate('riderId', 'name phone vehicleNumber');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: order
+    });
+
+  } catch (error) {
+    console.error('❌ Get order failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get order',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Track orders by phone number (legacy)
  */
 const trackByPhone = async (req, res) => {
   try {
@@ -405,7 +623,13 @@ const trackByPhone = async (req, res) => {
     .sort({ createdAt: -1 })
     .select('friendlyId status pricing.itemsSubtotal pricing.totalAmount createdAt items location');
 
-    if (orders.length === 0) {
+    // Ensure all orders have items array (defensive programming)
+    const ordersWithItems = orders.map(order => ({
+      ...order.toObject(),
+      items: order.items || []
+    }));
+
+    if (ordersWithItems.length === 0) {
       return res.json({
         success: true,
         message: 'No active orders found',
@@ -423,7 +647,7 @@ const trackByPhone = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Found ${orders.length} active order(s)`,
+      message: `Found ${ordersWithItems.length} active order(s)`,
       data: {
         client: {
           _id: client._id,
@@ -432,7 +656,7 @@ const trackByPhone = async (req, res) => {
           totalOrders: client.totalOrders,
           totalSpent: client.totalSpent
         },
-        orders: orders.map(order => ({
+        orders: ordersWithItems.map(order => ({
           _id: order._id,
           friendlyId: order.friendlyId,
           status: order.status,
@@ -455,87 +679,11 @@ const trackByPhone = async (req, res) => {
   }
 };
 
-/**
- * Get pricing breakdown before payment
- * POST /api/orders/calculate
- */
-const calculateOrderPricingHandler = async (req, res) => {
-  try {
-    const { items } = req.body;
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Items array is required'
-      });
-    }
-
-    const pricing = await calculateOrderPricing(items);
-
-    res.json({
-      success: true,
-      data: {
-        pricing: pricing.breakdown,
-        config: pricing.config,
-        totalAmount: pricing.totalAmount
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Pricing calculation failed:', error);
-    
-    if (error.message.includes('Minimum order amount')) {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-        error: error.message
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Failed to calculate pricing',
-      error: error.message
-    });
-  }
-};
-
-/**
- * Get order details by ID
- * GET /api/orders/:orderId
- */
-const getOrderById = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-
-    const order = await Order.findById(orderId)
-      .populate('client.clientId', 'phone name email');
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: order
-    });
-
-  } catch (error) {
-    console.error('❌ Get order failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get order',
-      error: error.message
-    });
-  }
-};
-
 module.exports = {
   createOrder,
+  trackOrderByPhoneAndCode,
+  calculateOrderPricingHandler,
+  getOrderById,
   trackByPhone,
-  calculateOrderPricing: calculateOrderPricingHandler,
-  getOrderById
+  verifyPaystackPayment
 };

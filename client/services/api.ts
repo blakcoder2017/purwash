@@ -18,12 +18,23 @@ export const api = {
     };
   },
 
-  getClient: async (phone: string) => {
+  getClient: async (phone: string, create?: boolean, name?: string) => {
     // A simple regex to validate phone number format before sending
     if (!/^\d{10}$/.test(phone)) {
         return Promise.reject(new Error("Invalid phone number format."));
     }
-    const response = await apiClient.get<{ success: boolean; data: Client }>(`/clients/${phone}`);
+    
+    const params = new URLSearchParams();
+    if (create) params.append('create', 'true');
+    if (name) params.append('name', name);
+    
+    const url = `/clients/${phone}${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await apiClient.get<{ success: boolean; data: Client }>(url);
+    return response.data;
+  },
+
+  getPaystackConfig: async () => {
+    const response = await apiClient.get<{ success: boolean; data: { publicKey: string } }>('/config/paystack');
     return response.data;
   },
   
@@ -32,13 +43,18 @@ export const api = {
     return response.data;
   },
 
-  createOrder: async (payload: CreateOrderPayload) => {
+  createOrder: async (payload: any) => {
     const response = await apiClient.post('/orders', payload);
     return response.data;
   },
 
   trackOrder: async (phone: string) => {
     const response = await apiClient.get<TrackOrderResponse>(`/orders/track/${phone}`);
+    return response.data;
+  },
+
+  trackOrderByPhoneAndCode: async (phone: string, code: string) => {
+    const response = await apiClient.get(`/orders/track/${phone}/${code}`);
     return response.data;
   }
 };

@@ -1,38 +1,58 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import WalletCard from '../components/WalletCard';
 import { WalletSummaryIcons } from '../components/icons/NavIcons';
-import { WalletData } from '../types';
+import { riderApi } from '../services/api';
 
 type FilterPeriod = 'today' | 'last7' | 'month';
 
 const WalletScreen: React.FC = () => {
-  const { user } = useAppContext();
+  const { user, updateUser } = useAppContext();
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('last7');
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [walletTotals, setWalletTotals] = useState({ totalEarned: 0, pendingBalance: 0 });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Use real wallet data from user
-  const totalEarned = user?.wallet?.totalEarned || 0;
-  const pending = user?.wallet?.pendingBalance || 0;
+  useEffect(() => {
+    const loadWallet = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await riderApi.getWalletData();
+        const data = response.data;
+        const totalEarned = data?.wallet?.totalEarned ?? 0;
+        const pendingBalance = data?.wallet?.pendingBalance ?? 0;
+        setWalletTotals({ totalEarned, pendingBalance });
+        setTransactions(data?.transactions || []);
+        if (user) {
+          updateUser({
+            ...user,
+            wallet: {
+              totalEarned,
+              pendingBalance
+            }
+          });
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to load wallet.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadWallet();
+  }, []);
+
+  const totalEarned = walletTotals.totalEarned || user?.wallet?.totalEarned || 0;
+  const pending = walletTotals.pendingBalance || user?.wallet?.pendingBalance || 0;
   const paid = totalEarned - pending;
 
-  // Create mock history based on real data (in a real app, this would come from the backend)
-  const history = useMemo(() => {
-    const mockHistory = [];
-    const now = new Date();
-    
-    // Generate some sample transactions based on real earnings
-    for (let i = 0; i < 10; i++) {
-      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      mockHistory.push({
-        id: `txn_${i}`,
-        date: date.toISOString(),
-        amount: Math.random() * 50 + 10 // Random amounts between 10-60
-      });
-    }
-    
-    return mockHistory;
-  }, []);
+  const history = transactions.map((item, index) => ({
+    id: item.orderId?.friendlyId || item.orderId?._id || item._id || `${index}`,
+    date: item.createdAt || item.date,
+    amount: item.amount || 0
+  }));
 
   const filteredHistory = useMemo(() => {
     const now = new Date();
@@ -92,7 +112,11 @@ const WalletScreen: React.FC = () => {
             </div>
         </div>
         <div className="bg-white rounded-lg shadow">
-            {filteredHistory.length > 0 ? (
+            {loading ? (
+                <div className="p-8 text-center text-gray-500">Loading transactions...</div>
+            ) : error ? (
+                <div className="p-8 text-center text-red-500">{error}</div>
+            ) : filteredHistory.length > 0 ? (
                 <ul className="divide-y divide-gray-200">
                     {filteredHistory.map((item) => (
                     <li key={item.id} className="p-4 flex justify-between items-center">

@@ -1,6 +1,6 @@
 import { User, Order, OrderStatus, MomoNetwork } from '../types';
 
-const BASE_URL = 'http://localhost:5000/api';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 async function handleResponse<T>(response: Response): Promise<T> {
   const data = await response.json();
@@ -104,14 +104,35 @@ export const riderApi = {
     }).then(response => handleResponse<{ success: boolean; data: { user: User } }>(response));
   },
 
+  updateProfile: async (payload: {
+    profile?: { firstName?: string; lastName?: string; phone?: string; avatar?: string };
+    businessName?: string;
+    bio?: string;
+    operatingHours?: { open?: string; close?: string };
+    location?: { address?: string; lat?: number; lng?: number };
+  }): Promise<{ success: boolean; data: { user: User } }> => {
+    return fetch(`${BASE_URL}/auth/profile`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(response => handleResponse<{ success: boolean; data: { user: User } }>(response));
+  },
+
+  changePassword: async (payload: { currentPassword: string; newPassword: string }): Promise<{ success: boolean; message: string }> => {
+    return fetch(`${BASE_URL}/auth/change-password`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(response => handleResponse<{ success: boolean; message: string }>(response));
+  },
+
   // Setup Mobile Money for payouts
   verifyMomo: async (details: {
-    userId: string;
     momoNumber: string;
     momoNetwork: MomoNetwork;
-    businessName: string;
+    businessName?: string;
   }): Promise<{ success: boolean; data: { resolvedName: string; subaccountCode: string } }> => {
-    return fetch(`${BASE_URL}/users/verify-momo`, {
+    return fetch(`${BASE_URL}/auth/verify-momo`, {
       method: 'POST',
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(details),
@@ -121,6 +142,36 @@ export const riderApi = {
   // Get pending orders available for assignment
   getPendingOrders: async (): Promise<Order[]> => {
     return fetch(`${BASE_URL}/v1/manage/orders/pending`, {
+      headers: getAuthHeaders(),
+    }).then(response => handleResponse<Order[]>(response));
+  },
+
+  // Update online status
+  updateOnlineStatus: async (isOnline: boolean): Promise<{ success: boolean; isOnline: boolean }> => {
+    return fetch(`${BASE_URL}/users/online-status`, {
+      method: 'PATCH',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isOnline }),
+    }).then(response => handleResponse<{ success: boolean; isOnline: boolean }>(response));
+  },
+
+  getWalletData: async (): Promise<{ success: boolean; data: any }> => {
+    return fetch(`${BASE_URL}/wallet`, {
+      method: 'GET',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }
+    }).then(response => handleResponse<{ success: boolean; data: any }>(response));
+  },
+
+  getWalletTransactions: async (): Promise<{ success: boolean; data: any }> => {
+    return fetch(`${BASE_URL}/wallet/transactions`, {
+      method: 'GET',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }
+    }).then(response => handleResponse<{ success: boolean; data: any }>(response));
+  },
+
+  // Get past jobs (completed or cancelled)
+  getJobHistory: async (limit = 20): Promise<Order[]> => {
+    return fetch(`${BASE_URL}/v1/manage/orders/history?limit=${limit}`, {
       headers: getAuthHeaders(),
     }).then(response => handleResponse<Order[]>(response));
   },

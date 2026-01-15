@@ -2,6 +2,7 @@
 import React from 'react';
 import { Order } from '../types';
 import { PhoneIcon, MapIcon } from './icons/ActionIcons';
+import { STATUS_TEXT } from '../constants';
 
 interface OrderCardProps {
   order: Order;
@@ -10,12 +11,24 @@ interface OrderCardProps {
 const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
   const mapLink = `https://www.google.com/maps/dir/?api=1&destination=${order.client.location.coordinates.lat},${order.client.location.coordinates.lng}`;
   const telLink = `tel:${order.client.phone}`;
+  const nextAction = STATUS_TEXT[order.status];
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-5 m-4 text-primary border-l-4 border-primary">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold">Order #{order.friendlyId}</h2>
         <span className="text-sm font-semibold text-gray-600">{new Date(order.createdAt).toLocaleTimeString()}</span>
+      </div>
+
+      <div className="mb-4 flex items-center justify-between bg-gray-50 rounded-lg p-3">
+        <div>
+          <p className="text-xs text-gray-500 uppercase">Current Status</p>
+          <p className="font-semibold text-primary">{order.status.replace(/_/g, ' ')}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-gray-500 uppercase">Next Action</p>
+          <p className="font-semibold text-primary">{nextAction}</p>
+        </div>
       </div>
 
       <div className="space-y-3 text-lg">

@@ -14,6 +14,7 @@ This document outlines the complete pricing model, financial breakdown, and mone
 | Delivery Fee | Flat Rate | 10.00 | Rider |
 | **Total Client Pays** | 100 + 9 + 10 | **119.00** | From Client |
 
+
 ## 2. Distribution (Payouts)
 
 Once the ₵119.00 lands in Paystack main account:

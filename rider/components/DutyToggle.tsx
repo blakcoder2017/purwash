@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { riderApi } from '../services/api';
 
 const DutyToggle: React.FC = () => {
-  const { user } = useAppContext();
+  const { user, updateUser } = useAppContext();
   const [isOnline, setIsOnline] = useState(user?.isOnline || false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -16,29 +17,10 @@ const DutyToggle: React.FC = () => {
     setIsLoading(true);
     
     try {
-      const token = localStorage.getItem('PurWashRiderToken');
-      if (!token) {
-        console.error('No rider token found');
-        return;
-      }
-      
-      const response = await fetch('http://localhost:5000/api/users/online-status', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ isOnline: !isOnline })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Duty status updated:', data);
-        setIsOnline(data.isOnline);
-        // Update user context if needed
-        window.location.reload(); // Simple refresh to update context
-      } else {
-        console.error('Failed to update duty status:', response.status);
+      const data = await riderApi.updateOnlineStatus(!isOnline);
+      setIsOnline(data.isOnline);
+      if (user) {
+        updateUser({ ...user, isOnline: data.isOnline });
       }
     } catch (error) {
       console.error('Error updating duty status:', error);

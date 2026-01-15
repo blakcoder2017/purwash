@@ -8,6 +8,7 @@ interface LaundryJobCardProps {
 }
 
 const statusStyles: Record<OrderStatus, { bg: string, text: string, label: string }> = {
+    assigned: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Incoming' },
     dropped_at_laundry: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'In Shop' },
     washing: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Washing' },
     ready_for_pick: { bg: 'bg-green-50', text: 'text-green-700', label: 'Ready' },
@@ -39,6 +40,15 @@ const LaundryJobCard: React.FC<LaundryJobCardProps> = ({ order, onStatusUpdate, 
             </div>
             
             {/* Action Button */}
+            {order.status === 'assigned' && (
+                <button 
+                    onClick={(e) => handleStatusChange(e, 'dropped_at_laundry')}
+                    className="w-full bg-primary text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-100 hover:bg-opacity-90 transition-all"
+                >
+                    Confirm Received
+                </button>
+            )}
+
             {order.status === 'dropped_at_laundry' && (
                 <button 
                     onClick={(e) => handleStatusChange(e, 'washing')}

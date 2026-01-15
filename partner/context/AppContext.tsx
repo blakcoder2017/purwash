@@ -6,6 +6,7 @@ interface AppContextType {
   token: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  updateUser: (user: User) => void;
   loading: boolean;
 }
 
@@ -69,8 +70,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('PurWashPartnerUser');
   };
 
+  const updateUser = (userData: User) => {
+    setUser(userData);
+    localStorage.setItem('PurWashPartnerUser', JSON.stringify(userData));
+  };
+
   return (
-    <AppContext.Provider value={{ user, token, login, logout, loading }}>
+    <AppContext.Provider value={{ user, token, login, logout, updateUser, loading }}>
       {children}
     </AppContext.Provider>
   );

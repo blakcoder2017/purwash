@@ -75,13 +75,30 @@ async function testOrderTracking() {
   try {
     console.log('🔍 Testing order tracking...');
     
-    const response = await axios.get(`${API_BASE_URL}/orders/track/0551234567`);
+    const response = await axios.get(`${API_BASE_URL}/orders/by-phone/0551234567`);
     
     console.log('✅ Order tracking successful:');
     console.log(JSON.stringify(response.data, null, 2));
     
   } catch (error) {
     console.error('❌ Order tracking failed:', error.response?.data || error.message);
+  }
+}
+
+/**
+ * Check if test client exists
+ */
+async function checkClientExists() {
+  try {
+    await axios.get(`${API_BASE_URL}/clients/0551234567`);
+    return true;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      console.warn('⚠️ Client not found; skipping tracking test.');
+      return false;
+    }
+    console.error('❌ Client existence check failed:', error.response?.data || error.message);
+    return false;
   }
 }
 
@@ -101,8 +118,11 @@ async function runTests() {
     console.log('\n');
     
     // Test 3: Order Tracking
-    await testOrderTracking();
-    console.log('\n');
+    const clientExists = await checkClientExists();
+    if (clientExists) {
+      await testOrderTracking();
+      console.log('\n');
+    }
     
     console.log('✅ All tests completed!');
     

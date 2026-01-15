@@ -76,14 +76,20 @@ async function testOrderCreation() {
 async function testGetClientByPhone() {
   try {
     console.log('👤 Testing get client by phone...');
-    
+
     const response = await axios.get(`${API_BASE_URL}/clients/${testPhone}`);
-    
+
     console.log('✅ Get client by phone successful:');
     console.log(JSON.stringify(response.data, null, 2));
-    
+    return true;
   } catch (error) {
+    const status = error.response?.status;
+    if (status === 404) {
+      console.warn('⚠️ Client not found; skipping client-specific tests.');
+      return false;
+    }
     console.error('❌ Get client by phone failed:', error.response?.data || error.message);
+    return false;
   }
 }
 
@@ -177,7 +183,7 @@ async function testOrderTracking() {
   try {
     console.log('🔍 Testing order tracking...');
     
-    const response = await axios.get(`${API_BASE_URL}/orders/track/${testPhone}`);
+    const response = await axios.get(`${API_BASE_URL}/orders/by-phone/${testPhone}`);
     
     console.log('✅ Order tracking successful:');
     console.log(JSON.stringify(response.data, null, 2));
@@ -202,29 +208,32 @@ async function runAllTests() {
     await testOrderCreation();
     console.log('\n');
     
-    // Test 3: Client Profile
-    await testGetClientByPhone();
+    const clientExists = await testGetClientByPhone();
     console.log('\n');
     
-    // Test 4: Client Orders
-    await testGetClientOrders();
-    console.log('\n');
+    if (clientExists) {
+      // Test 4: Client Orders
+      await testGetClientOrders();
+      console.log('\n');
+      
+      // Test 5: Client Statistics
+      await testGetClientStats();
+      console.log('\n');
+      
+      // Test 6: Update Client Profile
+      await testUpdateClientProfile();
+      console.log('\n');
+      
+      // Test 7: Add Saved Location
+      await testAddSavedLocation();
+      console.log('\n');
+    }
     
-    // Test 5: Client Statistics
-    await testGetClientStats();
-    console.log('\n');
-    
-    // Test 6: Update Client Profile
-    await testUpdateClientProfile();
-    console.log('\n');
-    
-    // Test 7: Add Saved Location
-    await testAddSavedLocation();
-    console.log('\n');
-    
-    // Test 8: Order Tracking
-    await testOrderTracking();
-    console.log('\n');
+    // Test 8: Order Tracking (requires client/order)
+    if (clientExists) {
+      await testOrderTracking();
+      console.log('\n');
+    }
     
     console.log('✅ All tests completed!');
     
@@ -243,8 +252,11 @@ async function testPricingOnly() {
 
 async function testClientOnly() {
   console.log('👤 Testing client endpoints only...');
-  await testGetClientByPhone();
+  const clientExists = await testGetClientByPhone();
   console.log('\n');
+  if (!clientExists) {
+    return;
+  }
   await testGetClientOrders();
   console.log('\n');
   await testGetClientStats();

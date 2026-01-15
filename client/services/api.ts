@@ -2,7 +2,7 @@ import axios from 'axios';
 import type { OrderItem, CreateOrderPayload, Client, CalculatePriceResponseData, LaundryItem, TrackOrderResponse } from '../types';
 
 const apiClient = axios.create({
-  baseURL: '/api', // Use proxy to backend
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -38,9 +38,15 @@ export const api = {
     return response.data;
   },
   
-  calculatePrice: async (items: OrderItem[]) => {
-    const response = await apiClient.post<{ success: boolean; data: CalculatePriceResponseData }>('/orders/calculate', { items });
-    return response.data;
+  calculatePrice: async (items: Array<{ itemId: string; quantity: number }>) => {
+    const response = await apiClient.post<{ items: any[]; pricing: CalculatePriceResponseData; currency: string }>(
+      '/catalog/calculate-preview',
+      { items }
+    );
+    return {
+      success: true,
+      data: response.data.pricing
+    };
   },
 
   createOrder: async (payload: any) => {
@@ -49,12 +55,16 @@ export const api = {
   },
 
   trackOrder: async (phone: string) => {
-    const response = await apiClient.get<TrackOrderResponse>(`/orders/track/${phone}`);
+    const response = await apiClient.get<TrackOrderResponse>(`/orders/by-phone/${encodeURIComponent(phone)}`, {
+      timeout: 10000
+    });
     return response.data;
   },
 
   trackOrderByPhoneAndCode: async (phone: string, code: string) => {
-    const response = await apiClient.get(`/orders/track/${phone}/${code}`);
+    const response = await apiClient.get(`/orders/track/${encodeURIComponent(phone)}/${encodeURIComponent(code)}`, {
+      timeout: 10000
+    });
     return response.data;
   }
 };

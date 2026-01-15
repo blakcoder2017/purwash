@@ -1,9 +1,11 @@
 const Order = require('../models/Order');
 const User = require('../models/User');
 const AdminUser = require('../models/AdminUser');
+const Client = require('../models/Client');
 const Commission = require('../models/Commission');
 const logAction = require('../utils/auditLogger');
 const paystack = require('../utils/paystack');
+const { emitOrderAssignment } = require('../utils/websocket');
 const mongoose = require('mongoose');
 
 // 1. Get Dashboard Stats
@@ -13,6 +15,7 @@ exports.getDashboardStats = async (req, res) => {
     const pendingOrders = await Order.countDocuments({ status: 'created' });
     const activeRiders = await User.countDocuments({ role: 'rider', isActive: true });
     const activePartners = await User.countDocuments({ role: 'partner', isActive: true });
+    const activeClients = await Client.countDocuments({ isActive: true });
 
     // Revenue calculations
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -23,6 +26,11 @@ exports.getDashboardStats = async (req, res) => {
     
     const monthlyRevenue = recentOrders.reduce((sum, order) => sum + (order.pricing?.totalAmount || 0), 0);
     
+    const recentOrdersList = await Order.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select('friendlyId client status pricing.totalAmount createdAt');
+
     res.json({ 
       success: true,
       data: {
@@ -30,8 +38,9 @@ exports.getDashboardStats = async (req, res) => {
         pendingOrders, 
         activeRiders, 
         activePartners,
+        activeClients,
         monthlyRevenue,
-        recentOrders: [] // Add empty recentOrders array for compatibility
+        recentOrders: recentOrdersList
       }
     });
   } catch (error) {
@@ -174,6 +183,12 @@ exports.assignOrder = async (req, res) => {
     order.status = 'assigned';
     await order.save();
 
+    if (order.paymentDetails?.status === 'success') {
+      await Commission.createMissingOrderCommissions(order, 'admin');
+    }
+
+    emitOrderAssignment(riderId, laundryId, order);
+
     // Log the assignment
     await logAction({
       action: 'ORDER_ASSIGNMENT',
@@ -219,6 +234,45 @@ exports.forceConfirmDelivery = async (req, res) => {
     res.json({ success: true, message: "Admin forced confirmation" });
   } catch (error) {
     res.status(500).json({ message: 'Error force confirming order', error: error.message });
+  }
+};
+
+// 6b. Backfill rider/partner commissions for paid orders
+exports.backfillCommissions = async (req, res) => {
+  try {
+    const { limit = 500 } = req.body || {};
+
+    const orders = await Order.find({
+      'paymentDetails.status': 'success',
+      $or: [{ rider: { $ne: null } }, { laundry: { $ne: null } }]
+    })
+      .select('_id rider laundry status items pricing paymentDetails')
+      .sort({ createdAt: 1 })
+      .limit(limit);
+
+    let ordersProcessed = 0;
+    let ordersUpdated = 0;
+    let commissionsCreated = 0;
+
+    for (const order of orders) {
+      ordersProcessed += 1;
+      const created = await Commission.createMissingOrderCommissions(order, 'admin');
+      if (created.length > 0) {
+        ordersUpdated += 1;
+        commissionsCreated += created.length;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ordersProcessed,
+        ordersUpdated,
+        commissionsCreated
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error backfilling commissions', error: error.message });
   }
 };
 
@@ -482,7 +536,8 @@ exports.initiatePayout = async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: 'Transfer initiated successfully. Funds are on the way.' 
+      message: 'Transfer initiated successfully. Funds are on the way.',
+      data: { reference }
     });
 
   } catch (error) {
@@ -518,5 +573,108 @@ exports.getPayoutsSummary = async (req, res) => {
       success: false,
       message: error.message || 'Failed to get payouts summary'
     });
+  }
+};
+
+// 14. Get Ready Payouts (grouped by user)
+exports.getReadyPayouts = async (req, res) => {
+  try {
+    const ready = await Commission.aggregate([
+      { $match: { payoutStatus: 'ready_for_payout', userId: { $ne: null } } },
+      {
+        $group: {
+          _id: '$userId',
+          totalAmount: { $sum: '$amount' },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          userId: '$_id',
+          totalAmount: 1,
+          count: 1,
+          role: '$user.role',
+          businessName: '$user.businessName',
+          email: '$user.email',
+          phone: '$user.profile.phone',
+          firstName: '$user.profile.firstName',
+          lastName: '$user.profile.lastName',
+          recipientCode: '$user.paystack.recipientCode'
+        }
+      }
+    ]);
+
+    res.json({ success: true, data: ready });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching ready payouts', error: error.message });
+  }
+};
+
+// 15. Verify payout transfer (admin-triggered)
+exports.verifyPayoutTransfer = async (req, res) => {
+  try {
+    const { reference } = req.params;
+    if (!reference) {
+      return res.status(400).json({ success: false, message: 'Reference is required' });
+    }
+
+    const verifyResponse = await paystack.get(`/transfer/verify/${reference}`);
+    const data = verifyResponse.data?.data;
+    const status = data?.status;
+
+    if (status === 'success') {
+      await Commission.updateMany(
+        { 'transferDetails.reference': reference },
+        {
+          $set: {
+            payoutStatus: 'paid',
+            'transferDetails.transferredAt': new Date(),
+            'transferDetails.failureReason': undefined
+          }
+        }
+      );
+    } else if (status === 'failed') {
+      await Commission.updateMany(
+        { 'transferDetails.reference': reference },
+        {
+          $set: {
+            payoutStatus: 'failed',
+            'transferDetails.failureReason': data?.failure_reason || 'Transfer failed'
+          }
+        }
+      );
+    } else if (status === 'reversed') {
+      await Commission.updateMany(
+        { 'transferDetails.reference': reference },
+        {
+          $set: {
+            payoutStatus: 'ready_for_payout',
+            'transferDetails.failureReason': 'Transfer reversed'
+          }
+        }
+      );
+    }
+
+    res.json({
+      success: true,
+      data: {
+        reference,
+        status,
+        amount: data?.amount ? data.amount / 100 : undefined,
+        recipient: data?.recipient,
+        reason: data?.reason
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to verify transfer', error: error.message });
   }
 };

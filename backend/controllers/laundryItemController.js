@@ -259,9 +259,9 @@ const calculateOrderPreview = async (req, res) => {
       };
     });
     
-    // Use existing price calculator
-    const { calculateOrderTotal } = require('../utils/priceCalculator');
-    const pricing = calculateOrderTotal(orderItems, config);
+    // Use unified price calculator
+    const { calculateOrderBreakdown } = require('../utils/priceCalculator');
+    const pricing = calculateOrderBreakdown(orderItems, config);
     
     res.json({
       items: orderItems,

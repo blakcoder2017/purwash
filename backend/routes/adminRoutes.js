@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticateAdmin, requirePermission } = require('../middleware/adminAuth');
 const AuditLog = require('../models/AuditLogs');
 const AdminUser = require('../models/AdminUser');
+const Client = require('../models/Client');
 const { 
   getDashboardStats, 
   getAllOrders,
@@ -15,7 +16,10 @@ const {
   banUser,
   unbanUser,
   initiatePayout,
-  getPayoutsSummary
+  getPayoutsSummary,
+  getReadyPayouts,
+  verifyPayoutTransfer,
+  backfillCommissions
 } = require('../controllers/adminController');
 
 const {
@@ -88,6 +92,9 @@ router.post('/unban-user', unbanUser);
 // === PAYOUT MANAGEMENT ===
 router.post('/payout/initiate', initiatePayout);
 router.get('/payouts/summary', getPayoutsSummary);
+router.get('/payouts/ready', getReadyPayouts);
+router.get('/payouts/verify/:reference', verifyPayoutTransfer);
+router.post('/commissions/backfill', backfillCommissions);
 
 // === ADMIN USER MANAGEMENT ===
 // Get current admin profile
@@ -313,6 +320,70 @@ router.delete('/users/:adminId', requirePermission('users', 'delete'), async (re
     });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting admin user', error: error.message });
+  }
+});
+
+// === CLIENT MANAGEMENT ===
+router.get('/clients', async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, status } = req.query;
+    const filter = {};
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (status) filter.isActive = status === 'active';
+
+    const clients = await Client.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Client.countDocuments(filter);
+
+    res.json({
+      success: true,
+      data: {
+        clients,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching clients', error: error.message });
+  }
+});
+
+router.get('/clients/:clientId', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const client = await Client.findById(clientId);
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+    res.json({ success: true, data: client });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching client', error: error.message });
+  }
+});
+
+router.patch('/clients/:clientId', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const updates = req.body;
+    const client = await Client.findByIdAndUpdate(clientId, updates, { new: true, runValidators: true });
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+    res.json({ success: true, data: client });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating client', error: error.message });
   }
 });
 

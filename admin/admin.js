@@ -177,6 +177,12 @@ function showAnalytics() {
     loadAnalyticsContent();
 }
 
+function showPayouts() {
+    currentPage = 'payouts';
+    setActiveNav('payouts');
+    loadPayoutsContent();
+}
+
 function showSettings() {
     currentPage = 'settings';
     setActiveNav('settings');
@@ -381,6 +387,11 @@ async function loadOrdersContent() {
                                                 <i class="fas fa-user-plus"></i>
                                             </button>
                                         ` : ''}
+                                        ${order.status === 'delivered' && !order.isAdminConfirmed ? `
+                                            <button onclick="forceConfirmOrder('${order._id}')" class="text-red-600 hover:text-red-700 mr-3" title="Force Confirm">
+                                                <i class="fas fa-check-double"></i>
+                                            </button>
+                                        ` : ''}
                                         <button onclick="viewOrderTracking('${order._id}')" class="text-purple-600 hover:text-purple-700" title="Track Order">
                                             <i class="fas fa-map-marker-alt"></i>
                                         </button>
@@ -438,6 +449,21 @@ async function fetchDashboardStats() {
 async function fetchRecentOrders() {
     const response = await apiCall('/admin/stats');
     return response.data.recentOrders || [];
+}
+
+async function fetchPayoutsSummary() {
+    const response = await apiCall('/admin/payouts/summary');
+    return response.data || {};
+}
+
+async function fetchReadyPayouts() {
+    const response = await apiCall('/admin/payouts/ready');
+    return response.data || [];
+}
+
+async function verifyPayout(reference) {
+    const response = await apiCall(`/admin/payouts/verify/${reference}`);
+    return response.data || {};
 }
 
 async function fetchOrders() {
@@ -529,6 +555,7 @@ function refreshData() {
 // Modal functions (placeholder for now)
 function viewOrderDetails(orderId) {
     console.log('View order details:', orderId);
+    loadOrderDetails(orderId);
 }
 
 function assignOrder(orderId) {
@@ -537,6 +564,160 @@ function assignOrder(orderId) {
 
 function showProfileModal() {
     console.log('Show profile modal');
+}
+
+async function loadOrderDetails(orderId) {
+    try {
+        const response = await apiCall(`/admin/orders/${orderId}`);
+        const order = response?.data?.order || response?.data || response?.order || response || {};
+        const itemsHtml = (order.items || []).map(item => `
+            <div class="flex justify-between text-sm">
+                <span>${item.name} × ${item.quantity}</span>
+                <span>₵${(item.price * item.quantity).toFixed(2)}</span>
+            </div>
+        `).join('');
+        const content = `
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-500">Order Code</p>
+                        <p class="font-semibold">${order.friendlyId || order._id}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Status</p>
+                        <p class="font-semibold">${getStatusLabel(order.status)}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Client Phone</p>
+                        <p class="font-semibold">${order.client?.phone || 'N/A'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Total</p>
+                        <p class="font-semibold">₵${order.pricing?.totalAmount || 0}</p>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500 mb-2">Items</p>
+                    <div class="space-y-1">${itemsHtml || '<p class="text-gray-500 text-sm">No items</p>'}</div>
+                </div>
+            </div>
+        `;
+        showModal('Order Details', content, 'lg');
+    } catch (error) {
+        console.error('Failed to load order details:', error);
+        showToast('Failed to load order details', 'error');
+    }
+}
+
+function showAssignOrderModal(orderId) {
+    const riders = window.availableRiders || [];
+    const partners = window.availablePartners || [];
+    const content = `
+        <form id="assignOrderForm" class="space-y-4">
+            <input type="hidden" name="orderId" value="${orderId}">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Assign Rider</label>
+                <select name="riderId" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent">
+                    <option value="">Select Rider</option>
+                    ${riders.map(rider => `
+                        <option value="${rider._id}">
+                            ${rider.profile?.firstName || ''} ${rider.profile?.lastName || ''} (${rider.profile?.phone || 'N/A'})
+                        </option>
+                    `).join('')}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Assign Partner</label>
+                <select name="laundryId" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent">
+                    <option value="">Select Partner</option>
+                    ${partners.map(partner => `
+                        <option value="${partner._id}">
+                            ${partner.businessName || 'Partner'} (${partner.profile?.phone || 'N/A'})
+                        </option>
+                    `).join('')}
+                </select>
+            </div>
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90">Assign</button>
+            </div>
+        </form>
+    `;
+    showModal('Assign Order', content, 'md');
+
+    document.getElementById('assignOrderForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const payload = {
+            orderId: formData.get('orderId'),
+            riderId: formData.get('riderId') || undefined,
+            laundryId: formData.get('laundryId') || undefined
+        };
+        try {
+            await apiCallWithToast('/admin/orders/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }, 'Order assigned successfully');
+            closeModal();
+            loadOrdersContent();
+        } catch (error) {
+            // Error handled by apiCallWithToast
+        }
+    });
+}
+
+function viewOrderTracking(orderId) {
+    loadOrderTracking(orderId);
+}
+
+async function forceConfirmOrder(orderId) {
+    const confirmed = confirm('Force confirm this order as delivered?');
+    if (!confirmed) return;
+    try {
+        await apiCallWithToast(`/admin/orders/${orderId}/force-confirm`, {
+            method: 'PATCH'
+        }, 'Order force confirmed');
+        loadOrdersContent();
+    } catch (error) {
+        // handled by apiCallWithToast
+    }
+}
+
+async function loadOrderTracking(orderId) {
+    try {
+        const response = await apiCall(`/admin/orders/${orderId}`);
+        const order = response?.data?.order || response?.data || response?.order || response || {};
+        const phone = order.client?.phone || '';
+        const code = order.friendlyId || order._id;
+        const content = `
+            <div class="space-y-4">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <p class="text-sm text-gray-500">Current Status</p>
+                    <p class="text-lg font-semibold">${getStatusLabel(order.status)}</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-500">Order Code</p>
+                        <p class="font-semibold">${code}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Client Phone</p>
+                        <p class="font-semibold">${phone || 'N/A'}</p>
+                    </div>
+                </div>
+                <div class="flex justify-end">
+                    <a href="http://localhost:3001/track-order/${phone}/${code}" target="_blank" class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90">
+                        Open Client Tracking
+                    </a>
+                </div>
+            </div>
+        `;
+        showModal('Order Tracking', content, 'md');
+    } catch (error) {
+        console.error('Failed to load order tracking:', error);
+        showToast('Failed to load order tracking', 'error');
+    }
 }
 
 // Modal and Toast Utilities
@@ -623,7 +804,7 @@ async function viewClient(clientId) {
                     <div>
                         <h4 class="font-medium text-gray-700 mb-2">Personal Information</h4>
                         <div class="space-y-2">
-                            <p><span class="text-gray-500">Name:</span> ${client.firstName || 'N/A'} ${client.lastName || 'N/A'}</p>
+                            <p><span class="text-gray-500">Name:</span> ${client.name || 'N/A'}</p>
                             <p><span class="text-gray-500">Phone:</span> ${client.phone || 'N/A'}</p>
                             <p><span class="text-gray-500">Email:</span> ${client.email || 'N/A'}</p>
                             <p><span class="text-gray-500">Status:</span> 
@@ -636,9 +817,8 @@ async function viewClient(clientId) {
                     <div>
                         <h4 class="font-medium text-gray-700 mb-2">Order Statistics</h4>
                         <div class="space-y-2">
-                            <p><span class="text-gray-500">Total Orders:</span> ${client.stats?.totalOrders || 0}</p>
-                            <p><span class="text-gray-500">Completed Orders:</span> ${client.stats?.completedOrders || 0}</p>
-                            <p><span class="text-gray-500">Total Spent:</span> GHS ${client.stats?.totalSpent || 0}</p>
+                            <p><span class="text-gray-500">Total Orders:</span> ${client.totalOrders || 0}</p>
+                            <p><span class="text-gray-500">Total Spent:</span> GHS ${client.totalSpent || 0}</p>
                             <p><span class="text-gray-500">Member Since:</span> ${new Date(client.createdAt).toLocaleDateString()}</p>
                         </div>
                     </div>
@@ -651,7 +831,7 @@ async function viewClient(clientId) {
                             ${client.notes.map(note => `
                                 <div class="bg-gray-50 p-3 rounded">
                                     <p class="text-sm">${note.content}</p>
-                                    <p class="text-xs text-gray-500 mt-1">${new Date(note.addedAt).toLocaleDateString()} - ${note.type}</p>
+                                    <p class="text-xs text-gray-500 mt-1">${new Date(note.createdAt).toLocaleDateString()}</p>
                                 </div>
                             `).join('')}
                         </div>
@@ -676,12 +856,8 @@ async function editClient(clientId) {
             <form id="editClientForm" class="space-y-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                        <input type="text" name="firstName" value="${client.firstName || ''}" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-                        <input type="text" name="lastName" value="${client.lastName || ''}" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                        <input type="text" name="name" value="${client.name || ''}" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
@@ -699,11 +875,6 @@ async function editClient(clientId) {
                         <option value="true" ${client.isActive ? 'selected' : ''}>Active</option>
                         <option value="false" ${!client.isActive ? 'selected' : ''}>Inactive</option>
                     </select>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Add Note</label>
-                    <textarea name="note" rows="3" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent" placeholder="Add an admin note..."></textarea>
                 </div>
                 
                 <div class="flex justify-end space-x-3">
@@ -745,7 +916,8 @@ async function viewPartner(partnerId) {
     try {
         console.log('📡 Fetching partner details...');
         const response = await apiCall(`/admin/partners/${partnerId}`);
-        const partner = response.data;
+        const partnerPayload = response?.data || response?.partner || response;
+        const partner = partnerPayload?.partner || partnerPayload;
         
         const content = `
             <div class="space-y-6">
@@ -779,15 +951,15 @@ async function viewPartner(partnerId) {
                     <div class="grid grid-cols-3 gap-4">
                         <div class="bg-gray-50 p-3 rounded">
                             <p class="text-sm text-gray-500">Total Orders</p>
-                            <p class="text-lg font-semibold">${partner.stats?.totalOrders || 0}</p>
+                            <p class="text-lg font-semibold">${partnerPayload?.stats?.totalOrders || partner.stats?.totalOrders || 0}</p>
                         </div>
                         <div class="bg-gray-50 p-3 rounded">
                             <p class="text-sm text-gray-500">Completed</p>
-                            <p class="text-lg font-semibold">${partner.stats?.completedOrders || 0}</p>
+                            <p class="text-lg font-semibold">${partnerPayload?.stats?.completedOrders || partner.stats?.completedOrders || 0}</p>
                         </div>
                         <div class="bg-gray-50 p-3 rounded">
                             <p class="text-sm text-gray-500">Total Earnings</p>
-                            <p class="text-lg font-semibold">GHS ${partner.stats?.totalEarnings || 0}</p>
+                            <p class="text-lg font-semibold">GHS ${partnerPayload?.stats?.totalEarnings || partner.stats?.totalEarnings || 0}</p>
                         </div>
                     </div>
                 </div>
@@ -805,7 +977,8 @@ async function viewRider(riderId) {
     try {
         console.log('📡 Fetching rider details...');
         const response = await apiCall(`/admin/riders/${riderId}`);
-        const rider = response.data;
+        const riderPayload = response?.data || response?.rider || response;
+        const rider = riderPayload?.rider || riderPayload;
         
         const content = `
             <div class="space-y-6">
@@ -839,15 +1012,15 @@ async function viewRider(riderId) {
                     <div class="grid grid-cols-3 gap-4">
                         <div class="bg-gray-50 p-3 rounded">
                             <p class="text-sm text-gray-500">Total Orders</p>
-                            <p class="text-lg font-semibold">${rider.stats?.totalOrders || 0}</p>
+                            <p class="text-lg font-semibold">${riderPayload?.stats?.totalOrders || rider.stats?.totalOrders || 0}</p>
                         </div>
                         <div class="bg-gray-50 p-3 rounded">
                             <p class="text-sm text-gray-500">Completed</p>
-                            <p class="text-lg font-semibold">${rider.stats?.completedOrders || 0}</p>
+                            <p class="text-lg font-semibold">${riderPayload?.stats?.completedOrders || rider.stats?.completedOrders || 0}</p>
                         </div>
                         <div class="bg-gray-50 p-3 rounded">
                             <p class="text-sm text-gray-500">Total Earnings</p>
-                            <p class="text-lg font-semibold">GHS ${rider.stats?.totalEarnings || 0}</p>
+                            <p class="text-lg font-semibold">GHS ${riderPayload?.stats?.totalEarnings || rider.stats?.totalEarnings || 0}</p>
                         </div>
                     </div>
                 </div>
@@ -991,7 +1164,7 @@ async function loadClientsContent() {
         const response = await apiCall('/admin/clients');
         console.log('✅ Clients API response:', response);
         
-        const clients = response.data.clients || [];
+            const clients = response.data.clients || [];
         const pagination = response.data.pagination || {};
         
         console.log(`📊 Loaded ${clients.length} clients`);
@@ -1037,7 +1210,7 @@ async function loadClientsContent() {
                                                 <i class="fas fa-user text-gray-500"></i>
                                             </div>
                                             <div>
-                                                <div class="font-medium">${client.firstName || 'N/A'} ${client.lastName || 'N/A'}</div>
+                                                <div class="font-medium">${client.name || 'N/A'}</div>
                                                 <div class="text-sm text-gray-500">ID: ${client._id}</div>
                                             </div>
                                         </div>
@@ -1050,8 +1223,8 @@ async function loadClientsContent() {
                                     </td>
                                     <td class="px-6 py-4">
                                         <div class="text-sm">
-                                            <div>Total: ${client.stats?.totalOrders || 0}</div>
-                                            <div class="text-gray-500">Completed: ${client.stats?.completedOrders || 0}</div>
+                                            <div>Total: ${client.totalOrders || 0}</div>
+                                            <div class="text-gray-500">Spent: GHS ${client.totalSpent || 0}</div>
                                         </div>
                                     </td>
                                     <td class="px-6 py-4">
@@ -1767,6 +1940,188 @@ async function loadSettingsContent() {
             </div>
         `;
     }
+}
+
+async function loadPayoutsContent() {
+    const contentArea = document.getElementById('contentArea');
+    contentArea.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl"></i></div>';
+
+    try {
+        const summary = await fetchPayoutsSummary();
+        const ready = await fetchReadyPayouts();
+
+        contentArea.innerHTML = `
+            <div class="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                    <h1 class="text-2xl font-bold text-primary">Payouts</h1>
+                    <p class="text-gray-600">Initiate transfers once funds hit the platform account</p>
+                </div>
+                <button onclick="runCommissionBackfill()" class="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black">
+                    <i class="fas fa-database mr-2"></i>Backfill Wallets
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                ${['pending_settlement','ready_for_payout','processing','paid','failed'].map(status => `
+                    <div class="bg-white p-4 rounded-lg shadow-sm border">
+                        <p class="text-xs text-gray-500 uppercase">${status.replace('_',' ')}</p>
+                        <p class="text-xl font-bold text-primary">${summary[status]?.count || 0}</p>
+                        <p class="text-sm text-gray-600">₵${(summary[status]?.amount || 0).toFixed(2)}</p>
+                    </div>
+                `).join('')}
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border">
+                <div class="p-6 border-b flex justify-between items-center">
+                    <h2 class="text-lg font-semibold text-primary">Ready for Payout</h2>
+                    <button onclick="refreshPayouts()" class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-blue-600">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ready Amount</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${ready.length === 0 ? `
+                                <tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No payouts ready</td></tr>
+                            ` : ready.map(row => {
+                                const displayName = (row.firstName || row.lastName) ? `${row.firstName || ''} ${row.lastName || ''}`.trim() : (row.businessName || row.email || 'User');
+                                return `
+                                    <tr>
+                                        <td class="px-6 py-4 text-sm">
+                                            <div class="font-medium">${displayName}</div>
+                                            <div class="text-gray-500">${row.phone || row.email || ''}</div>
+                                        </td>
+                                        <td class="px-6 py-4 text-sm">${row.role || 'partner'}</td>
+                                        <td class="px-6 py-4 text-sm font-semibold">₵${row.totalAmount.toFixed(2)}</td>
+                                        <td class="px-6 py-4 text-sm">
+                                            <button onclick="openPayoutModal('${row.userId}', ${row.totalAmount})" class="text-accent hover:text-blue-600 mr-2 ${row.recipientCode ? '' : 'opacity-50 cursor-not-allowed'}" ${row.recipientCode ? '' : 'disabled'}>
+                                                Initiate
+                                            </button>
+                                            ${row.recipientCode ? '' : '<span class="text-xs text-gray-400">No recipient</span>'}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Load payouts error:', error);
+        contentArea.innerHTML = '<div class="text-center py-8 text-red-500">Failed to load payouts</div>';
+    }
+}
+
+function refreshPayouts() {
+    loadPayoutsContent();
+}
+
+async function runCommissionBackfill() {
+    const confirmed = confirm('Backfill rider/partner commissions and wallets for paid orders?');
+    if (!confirmed) return;
+    const limitInput = prompt('How many orders to scan? (default 500)', '500');
+    const limit = Number(limitInput || 500);
+    if (!Number.isFinite(limit) || limit <= 0) {
+        showToast('Invalid limit value', 'error');
+        return;
+    }
+    try {
+        const response = await apiCallWithToast('/admin/commissions/backfill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit })
+        }, 'Backfill completed');
+        const data = response?.data;
+        if (data) {
+            showToast(`Processed ${data.ordersProcessed}, updated ${data.ordersUpdated}, created ${data.commissionsCreated}`, 'info');
+        }
+        loadPayoutsContent();
+    } catch (error) {
+        // handled by apiCallWithToast
+    }
+}
+
+function openPayoutModal(userId, maxAmount) {
+    const content = `
+        <form id="initiatePayoutForm" class="space-y-4">
+            <input type="hidden" name="userId" value="${userId}">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Amount (GHS)</label>
+                <input type="number" name="amount" value="${maxAmount.toFixed(2)}" min="1" max="${maxAmount.toFixed(2)}" step="0.01" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent">
+                <p class="text-xs text-gray-500 mt-1">Max available: ₵${maxAmount.toFixed(2)}</p>
+            </div>
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90">Send Payout</button>
+            </div>
+        </form>
+    `;
+
+    showModal('Initiate Payout', content, 'sm');
+
+    document.getElementById('initiatePayoutForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const payload = {
+            userId: formData.get('userId'),
+            amount: parseFloat(formData.get('amount'))
+        };
+        try {
+            const payoutRes = await apiCallWithToast('/admin/payout/initiate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }, 'Payout initiated successfully');
+            const reference = payoutRes?.data?.reference;
+            closeModal();
+            if (reference) {
+                pollPayoutStatus(reference);
+            } else {
+                loadPayoutsContent();
+            }
+        } catch (error) {
+            // handled by apiCallWithToast
+        }
+    });
+}
+
+function pollPayoutStatus(reference) {
+    let attempts = 0;
+    const maxAttempts = 10;
+    const intervalMs = 5000;
+
+    const interval = setInterval(async () => {
+        attempts += 1;
+        try {
+            const result = await verifyPayout(reference);
+            if (result.status === 'success') {
+                clearInterval(interval);
+                showToast('Payout successful', 'success');
+                loadPayoutsContent();
+            } else if (result.status === 'failed' || result.status === 'reversed') {
+                clearInterval(interval);
+                showToast(`Payout ${result.status}`, 'error');
+                loadPayoutsContent();
+            } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                showToast('Payout pending, check later', 'info');
+            }
+        } catch (error) {
+            if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                showToast('Payout verification failed', 'error');
+            }
+        }
+    }, intervalMs);
 }
 
 // Laundry Items Management

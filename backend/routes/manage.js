@@ -3,7 +3,8 @@ const router = express.Router();
 const { 
   assignStakeholders, 
   updateOrderStatus, 
-  getPendingOrders 
+  getPendingOrders,
+  getOrderHistory
 } = require('../controllers/manageController');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 
@@ -18,6 +19,7 @@ const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 
 // Get pending orders (for riders and partners)
 router.get('/orders/pending', authenticateToken, authorizeRoles(['rider', 'partner']), getPendingOrders);
+router.get('/orders/history', authenticateToken, authorizeRoles(['rider', 'partner']), getOrderHistory);
 
 // Update order status (for riders and partners)
 router.patch('/orders/:orderId/status', authenticateToken, authorizeRoles(['rider', 'partner']), updateOrderStatus);

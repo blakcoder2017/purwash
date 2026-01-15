@@ -1,11 +1,32 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import OrderCard from '../components/OrderCard';
 import StatusButton from '../components/StatusButton';
+import { riderApi } from '../services/api';
+import { Order } from '../types';
 
 const MissionScreen: React.FC = () => {
-  const { activeOrder, loading } = useAppContext();
+  const { orders, activeOrder, loading } = useAppContext();
+  const [history, setHistory] = useState<Order[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const data = await riderApi.getJobHistory(20);
+        setHistory(data);
+      } catch (error: any) {
+        setHistoryError(error.message || 'Failed to load history.');
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   const EmptyState = () => (
     <div className="flex flex-col items-center justify-center h-full text-center p-4">
@@ -26,15 +47,49 @@ const MissionScreen: React.FC = () => {
 
   return (
     <div className="h-full">
-      {loading && !activeOrder ? <LoadingState/> : 
-        activeOrder ? (
-          <div>
-            <OrderCard order={activeOrder} />
-            <StatusButton order={activeOrder} />
+      {loading && orders.length === 0 ? <LoadingState/> : 
+        orders.length > 0 ? (
+          <div className="space-y-4 pb-6">
+            {orders.map(order => (
+              <div key={order._id}>
+                <OrderCard order={order} />
+                <StatusButton order={order} inline />
+              </div>
+            ))}
           </div>
         ) : (
           <EmptyState />
         )}
+
+      <div className="mt-6 px-4 pb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xl font-bold text-primary">Past Jobs</h3>
+        </div>
+        {historyLoading ? (
+          <div className="text-center text-gray-500 py-4">Loading history...</div>
+        ) : historyError ? (
+          <div className="text-center text-red-500 py-4">{historyError}</div>
+        ) : history.length === 0 ? (
+          <div className="text-center text-gray-500 py-4">No past jobs yet.</div>
+        ) : (
+          <div className="space-y-3">
+            {history.map(item => (
+              <div key={item._id} className="bg-white rounded-lg border border-gray-100 shadow-sm p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-bold text-primary">Order #{item.friendlyId}</p>
+                    <p className="text-sm text-gray-500">{new Date(item.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <span className="text-xs font-semibold uppercase text-gray-600">{item.status.replace(/_/g, ' ')}</span>
+                </div>
+                <div className="mt-2 text-sm text-gray-700">
+                  <span className="font-semibold">Total:</span> ₵{item.pricing?.totalAmount?.toFixed(2) || '0.00'}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

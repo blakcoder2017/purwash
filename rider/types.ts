@@ -56,7 +56,8 @@ export type OrderStatus =
   | 'dropped_at_laundry'
   | 'ready_for_pick'
   | 'out_for_delivery'
-  | 'delivered';
+  | 'delivered'
+  | 'cancelled';
 
 export interface Order {
   _id: string;

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { getWalletData } from '../services/api';
 
 const WalletIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-accent">
@@ -21,11 +22,41 @@ const RevenueBox = ({ title, amount, description, isPrimary = false }: { title: 
 );
 
 const EarningsScreen: React.FC = () => {
-    const { user } = useAppContext();
+    const { user, updateUser } = useAppContext();
+    const [walletTotals, setWalletTotals] = useState({ totalEarned: 0, pendingBalance: 0 });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const loadWallet = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const response = await getWalletData();
+                const data = response.data;
+                const totalEarned = data?.wallet?.totalEarned ?? 0;
+                const pendingBalance = data?.wallet?.pendingBalance ?? 0;
+                setWalletTotals({ totalEarned, pendingBalance });
+                if (user) {
+                    updateUser({
+                        ...user,
+                        wallet: {
+                            totalEarned,
+                            pendingBalance
+                        }
+                    });
+                }
+            } catch (err: any) {
+                setError(err.message || 'Failed to load earnings.');
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadWallet();
+    }, []);
     
-    // Calculate real wallet data
-    const totalEarned = user?.wallet?.totalEarned || 0;
-    const pendingBalance = user?.wallet?.pendingBalance || 0;
+    const totalEarned = walletTotals.totalEarned || user?.wallet?.totalEarned || 0;
+    const pendingBalance = walletTotals.pendingBalance || user?.wallet?.pendingBalance || 0;
     const paidOut = totalEarned - pendingBalance;
     
     return (
@@ -40,6 +71,9 @@ const EarningsScreen: React.FC = () => {
                     <p className="text-slate-500">Your real-time wallet data.</p>
                 </header>
 
+                {error && (
+                    <div className="text-center text-red-500">{error}</div>
+                )}
                 <div className="space-y-4">
                     <RevenueBox
                         isPrimary

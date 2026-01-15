@@ -6,7 +6,8 @@ const {
   trackOrderByPhoneAndCode,
   calculateOrderPricingHandler,
   getOrderById,
-  verifyPaystackPayment
+  verifyPaystackPayment,
+  verifyPaymentManually
 } = require('../controllers/orderController');
 
 /**
@@ -19,6 +20,9 @@ const {
 // Public routes (for client app)
 router.post('/calculate', calculateOrderPricingHandler);
 router.post('/', createOrder);
+
+// Manual payment verification route
+router.get('/verify-payment/:reference', verifyPaymentManually);
 
 // GET /api/orders/track/:phone/:code - Track order by phone and code (new)
 router.get('/track/:phone/:code', trackOrderByPhoneAndCode);

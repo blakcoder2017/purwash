@@ -4,13 +4,14 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
+    const apiTarget = env.VITE_API_URL || 'http://localhost:5000';
     return {
       server: {
         port: 3001, // Use port 3001 as shown in error
         host: '0.0.0.0',
         proxy: {
           '/api': {
-            target: 'http://localhost:5000',
+            target: apiTarget,
             changeOrigin: true,
             secure: false,
             // Rewrite the path to remove /api prefix if needed

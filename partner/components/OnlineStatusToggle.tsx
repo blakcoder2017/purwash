@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { updateOnlineStatus } from '../services/api';
 
 const OnlineStatusToggle: React.FC = () => {
-  const { user } = useAppContext();
+  const { user, updateUser } = useAppContext();
   const [isOnline, setIsOnline] = useState(user?.isOnline || false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -15,29 +16,10 @@ const OnlineStatusToggle: React.FC = () => {
     setIsLoading(true);
     
     try {
-      const token = localStorage.getItem('PurWashPartnerToken');
-      if (!token) {
-        console.error('No token found');
-        return;
-      }
-      
-      const response = await fetch('http://localhost:5000/api/users/online-status', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ isOnline: !isOnline })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Online status updated:', data);
-        setIsOnline(data.isOnline);
-        // Update user context if needed
-        window.location.reload(); // Simple refresh to update context
-      } else {
-        console.error('Failed to update online status:', response.status);
+      const data = await updateOnlineStatus(!isOnline);
+      setIsOnline(data.isOnline);
+      if (user) {
+        updateUser({ ...user, isOnline: data.isOnline });
       }
     } catch (error) {
       console.error('Error updating online status:', error);

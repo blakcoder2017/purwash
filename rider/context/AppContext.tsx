@@ -7,12 +7,14 @@ import { riderApi } from '../services/api';
 
 interface AppContextType {
   user: User | null;
+  orders: Order[];
   activeOrder: Order | null;
   loading: boolean;
   error: string | null;
   notification: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  updateUser: (user: User) => void;
   fetchOrder: () => Promise<void>;
   updateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
   clearNotification: () => void;
@@ -23,6 +25,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState<boolean>(true); // Start with loading true to check auth
   const [error, setError] = useState<string | null>(null);
@@ -74,13 +77,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Establish connection with the backend.
       const socket = io(API_BASE_URL, {
         reconnectionAttempts: 5,
-        query: { userId: user.id },
+        query: { userId: user._id },
       });
       socketRef.current = socket;
 
       // 2. Authenticate with WebSocket server
       socket.emit('authenticate', {
-        userId: user.id,
+        userId: user._id,
         role: user.role || 'rider' // Default to rider for this app
       });
 
@@ -92,6 +95,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // This is the primary listener for real-time order assignments.
       socket.on('new_order', (orderData: Order) => {
         console.log('Received "new_order" event from server:', orderData);
+        setOrders(prev => [orderData, ...prev.filter(order => order._id !== orderData._id)]);
         setActiveOrder(orderData);
         setNotification(`New mission assigned! Order #${orderData.friendlyId}`);
       });
@@ -100,7 +104,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       socket.on('order_status_update', (data: any) => {
         console.log('Order status updated:', data);
         // Update local order state if needed
-        if (activeOrder && activeOrder.id === data.orderId) {
+        setOrders(prev => prev.map(order => order._id === data.orderId ? { ...order, status: data.status } : order));
+        if (activeOrder && activeOrder._id === data.orderId) {
           setActiveOrder(prev => prev ? { ...prev, status: data.status } : null);
         }
       });
@@ -131,6 +136,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setUser(null);
   };
 
+  const updateUser = (userData: User) => {
+    setUser(userData);
+    localStorage.setItem('PurWashRiderUser', JSON.stringify(userData));
+  };
+
   const clearNotification = () => setNotification(null);
 
   const clearError = () => setError(null);
@@ -141,10 +151,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setLoading(true);
     setError(null);
     try {
-      // For now, we don't have an endpoint to get active order for a rider
-      // In production, this would be: GET /api/users/:userId/active-order
-      // We'll rely on WebSocket for order assignments
-      setActiveOrder(null);
+      const orders = await riderApi.getPendingOrders();
+      const assignedOrders = Array.isArray(orders) ? orders : [];
+      setOrders(assignedOrders);
+      setActiveOrder(assignedOrders.length > 0 ? assignedOrders[0] : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch order');
     } finally {
@@ -158,6 +168,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const response = await riderApi.updateOrderStatus(orderId, status);
       if (response.success) {
+        setOrders(prev => {
+          if (status === 'delivered') {
+            return prev.filter(order => order._id !== orderId);
+          }
+          return prev.map(order => order._id === orderId ? { ...order, status } : order);
+        });
         if (activeOrder && activeOrder._id === orderId) {
           if (status === 'delivered') {
             setActiveOrder(null);
@@ -175,7 +191,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   return (
-    <AppContext.Provider value={{ user, activeOrder, loading, error, notification, login, logout, fetchOrder, updateOrderStatus, clearNotification, clearError }}>
+    <AppContext.Provider value={{ user, orders, activeOrder, loading, error, notification, login, logout, updateUser, fetchOrder, updateOrderStatus, clearNotification, clearError }}>
       {children}
     </AppContext.Provider>
   );

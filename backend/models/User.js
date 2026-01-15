@@ -65,6 +65,11 @@ const UserSchema = new mongoose.Schema({
     resolvedName: String,
     isVerified: { type: Boolean, default: false }
   },
+
+  pushTokens: [{
+    type: String,
+    trim: true
+  }],
   
   // Paystack Integration - SIMPLIFIED
   paystack: {

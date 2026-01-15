@@ -43,15 +43,9 @@ exports.handlePaystackWebhook = async (req, res) => {
         break;
         
       case 'transfer.success':
-        await handleSuccessfulTransfer(event.data);
-        break;
-        
       case 'transfer.failed':
-        await handleFailedTransfer(event.data);
-        break;
-        
       case 'transfer.reversed':
-        await handleTransferReversal(event.data);
+        console.log('Transfer event received (ignored):', event.event);
         break;
         
       default:
@@ -153,105 +147,7 @@ const handleFailedCharge = async (chargeData) => {
   }
 };
 
-/**
- * Handle successful transfer (payouts to riders/partners)
- */
-const handleSuccessfulTransfer = async (transferData) => {
-  try {
-    const { reference, amount, recipient, metadata } = transferData;
-    
-    console.log('Processing successful transfer:', reference);
-    
-    // Find user by recipient code
-    const user = await User.findOne({ 'paystack.recipientCode': recipient.recipient_code });
-    
-    if (user) {
-      // Update wallet
-      user.wallet.totalEarned += amount / 100;
-      user.wallet.lastPayout = new Date();
-      user.wallet.lastPayoutAmount = amount / 100;
-      user.wallet.pendingBalance = Math.max(0, user.wallet.pendingBalance - amount / 100);
-      
-      await user.save();
-      
-      console.log(`Transfer ${reference} processed for user ${user.email}`);
-      
-      // TODO: Send notification to user about successful payout
-      
-    } else {
-      console.log('User not found for recipient:', recipient.recipient_code);
-    }
-    
-  } catch (error) {
-    console.error('Error handling successful transfer:', error);
-  }
-};
-
-/**
- * Handle failed transfer
- */
-const handleFailedTransfer = async (transferData) => {
-  try {
-    const { reference, amount, recipient, metadata } = transferData;
-    
-    console.log('Processing failed transfer:', reference);
-    
-    // Find user by recipient code
-    const user = await User.findOne({ 'paystack.recipientCode': recipient.recipient_code });
-    
-    if (user) {
-      // Log the failed transfer
-      user.wallet.lastFailedPayout = new Date();
-      user.wallet.lastFailedPayoutAmount = amount / 100;
-      user.wallet.lastFailedPayoutReason = transferData.failure_reason || 'Transfer failed';
-      
-      await user.save();
-      
-      console.log(`Failed transfer ${reference} logged for user ${user.email}`);
-      
-      // TODO: Send notification to user about failed payout
-      
-    } else {
-      console.log('User not found for recipient:', recipient.recipient_code);
-    }
-    
-  } catch (error) {
-    console.error('Error handling failed transfer:', error);
-  }
-};
-
-/**
- * Handle transfer reversal
- */
-const handleTransferReversal = async (transferData) => {
-  try {
-    const { reference, amount, recipient, metadata } = transferData;
-    
-    console.log('Processing transfer reversal:', reference);
-    
-    // Find user by recipient code
-    const user = await User.findOne({ 'paystack.recipientCode': recipient.recipient_code });
-    
-    if (user) {
-      // Add reversed amount back to pending balance
-      user.wallet.pendingBalance += amount / 100;
-      user.wallet.lastReversal = new Date();
-      user.wallet.lastReversalAmount = amount / 100;
-      
-      await user.save();
-      
-      console.log(`Transfer reversal ${reference} processed for user ${user.email}`);
-      
-      // TODO: Send notification to user about transfer reversal
-      
-    } else {
-      console.log('User not found for recipient:', recipient.recipient_code);
-    }
-    
-  } catch (error) {
-    console.error('Error handling transfer reversal:', error);
-  }
-};
+// Transfer webhook handlers intentionally disabled for payouts.
 
 /**
  * Test webhook endpoint for development

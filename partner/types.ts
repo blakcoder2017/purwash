@@ -48,7 +48,7 @@ export interface Item {
 export interface Order {
     _id: string;
     friendlyId: string;
-    status: 'dropped_at_laundry' | 'washing' | 'ready_for_pick';
+    status: 'assigned' | 'dropped_at_laundry' | 'washing' | 'ready_for_pick' | 'delivered' | 'cancelled';
     client?: {
         phone: string;
         location: {
@@ -104,5 +104,5 @@ export enum View {
     Profile = 'PROFILE',
 }
 
-export type OrderStatus = 'dropped_at_laundry' | 'washing' | 'ready_for_pick';
+export type OrderStatus = 'assigned' | 'dropped_at_laundry' | 'washing' | 'ready_for_pick' | 'delivered' | 'cancelled';
 export type FilterStatus = OrderStatus | 'all';

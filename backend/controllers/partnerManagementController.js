@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Order = require('../models/Order');
 const Earnings = require('../models/Earnings');
+const Commission = require('../models/Commission');
 const logAction = require('../utils/auditLogger');
 
 // 1. Get all partners with filtering and pagination
@@ -69,7 +70,14 @@ exports.getAllPartners = async (req, res) => {
           }}
         ]);
         
+        const commissionStats = await Commission.aggregate([
+          { $match: { userId: partner._id, userRole: 'partner' } },
+          { $group: { _id: null, totalEarnings: { $sum: '$amount' } } }
+        ]);
+
         const stats = orderStats[0] || { totalOrders: 0, completedOrders: 0, totalEarnings: 0 };
+        const commissionTotals = commissionStats[0] || { totalEarnings: 0 };
+        stats.totalEarnings = commissionTotals.totalEarnings || 0;
         
         // Get earnings from Earnings model if available
         const earnings = await Earnings.findOne({ userId: partner._id });
@@ -132,6 +140,11 @@ exports.getPartnerById = async (req, res) => {
       }}
     ]);
 
+    const commissionStats = await Commission.aggregate([
+      { $match: { userId: partner._id, userRole: 'partner' } },
+      { $group: { _id: null, totalEarnings: { $sum: '$amount' } } }
+    ]);
+
     // Get earnings data
     const earnings = await Earnings.findOne({ userId: partner._id });
     
@@ -153,6 +166,8 @@ exports.getPartnerById = async (req, res) => {
       totalEarnings: 0,
       avgOrderValue: 0 
     };
+    const commissionTotals = commissionStats[0] || { totalEarnings: 0 };
+    stats.totalEarnings = commissionTotals.totalEarnings || 0;
     
     const recent = recentStats[0] || { recentOrders: 0, recentEarnings: 0 };
 

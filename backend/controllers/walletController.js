@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Earnings = require('../models/Earnings');
 const Order = require('../models/Order');
+const Commission = require('../models/Commission');
 const mongoose = require('mongoose');
 
 /**
@@ -29,10 +30,91 @@ const getWalletData = async (req, res) => {
       });
     }
 
-    // Get earnings data with transaction history
-    const earnings = await Earnings.findOne({ userId })
+    const userObjectId = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : userId;
+
+    let commissions = await Commission.find({ userId: userObjectId })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    if (commissions.length === 0) {
+      const orderIds = await Order.find({ $or: [{ rider: userObjectId }, { laundry: userObjectId }] })
+        .select('_id')
+        .lean();
+      const ids = orderIds.map(order => order._id);
+      if (ids.length > 0) {
+        commissions = await Commission.find({
+          orderId: { $in: ids },
+          userRole: user.role
+        })
+          .sort({ createdAt: -1 })
+          .limit(100)
+          .lean();
+      }
+    }
+
+    const totalEarned = commissions.reduce((sum, commission) => sum + (commission.amount || 0), 0);
+    const pendingBalance = commissions
+      .filter(commission => commission.payoutStatus !== 'paid')
+      .reduce((sum, commission) => sum + (commission.amount || 0), 0);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H5',
+        location: 'backend/controllers/walletController.js:60',
+        message: 'wallet_totals_computed',
+        data: {
+          role: user.role,
+          commissionCount: commissions.length,
+          totalEarned,
+          pendingBalance
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+
+    const commissionTransactions = commissions.map((commission, index) => ({
+      _id: commission._id || `${index}`,
+      type: 'earning',
+      amount: commission.amount,
+      description: `${commission.userRole === 'rider' ? 'Delivery' : 'Service'} Fee`,
+      orderId: commission.orderId,
+      createdAt: commission.confirmedAt || commission.createdAt
+    }));
+
+    let earnings = await Earnings.findOne({ userId })
       .populate('transactions.orderId', 'friendlyId totalAmount createdAt')
       .populate('transactions.performedBy', 'firstName lastName');
+
+    if (!earnings) {
+      earnings = await Earnings.create({
+        userId,
+        wallet: { totalEarned, pendingBalance },
+        transactions: commissionTransactions
+      });
+    } else {
+      earnings.wallet.totalEarned = totalEarned;
+      earnings.wallet.pendingBalance = pendingBalance;
+      if (!earnings.transactions || earnings.transactions.length === 0) {
+        earnings.transactions = commissionTransactions;
+      }
+      await earnings.save();
+    }
+
+    await User.findByIdAndUpdate(userId, {
+      $set: {
+        'wallet.totalEarned': totalEarned,
+        'wallet.pendingBalance': pendingBalance
+      }
+    });
 
     // Get recent orders that contribute to earnings
     const recentOrders = await Order.find({
@@ -54,8 +136,8 @@ const getWalletData = async (req, res) => {
 
     // Calculate statistics
     const stats = {
-      totalEarned: user.wallet.totalEarned || 0,
-      pendingBalance: user.wallet.pendingBalance || 0,
+      totalEarned,
+      pendingBalance,
       totalOrders: recentOrders.length,
       completedOrders: recentOrders.filter(order => order.status === 'delivered').length,
       pendingOrders: recentOrders.filter(order => !order.isDisbursed).length
@@ -76,11 +158,11 @@ const getWalletData = async (req, res) => {
           paystack: user.paystack
         },
         wallet: {
-          totalEarned: stats.totalEarned,
-          pendingBalance: stats.pendingBalance
+          totalEarned,
+          pendingBalance
         },
         stats,
-        transactions: earnings?.transactions || [],
+        transactions: earnings?.transactions || commissionTransactions,
         recentOrders
       }
     });
@@ -114,23 +196,46 @@ const getTransactionHistory = async (req, res) => {
       if (endDate) filter['transactions.createdAt'].$lte = new Date(endDate);
     }
 
-    const earnings = await Earnings.findOne(filter)
+    let earnings = await Earnings.findOne(filter)
       .populate('transactions.orderId', 'friendlyId totalAmount createdAt')
       .populate('transactions.performedBy', 'firstName lastName');
 
-    if (!earnings) {
-      return res.json({
-        success: true,
-        data: {
-          transactions: [],
-          pagination: {
-            current: page,
-            pages: 0,
-            total: 0,
-            limit
-          }
+    if (!earnings || !earnings.transactions || earnings.transactions.length === 0) {
+    const userObjectId = mongoose.Types.ObjectId.isValid(userId)
+        ? new mongoose.Types.ObjectId(userId)
+        : userId;
+
+    let commissions = await Commission.find({ userId: userObjectId })
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .lean();
+
+    if (commissions.length === 0) {
+        const orderIds = await Order.find({ $or: [{ rider: userObjectId }, { laundry: userObjectId }] })
+            .select('_id')
+            .lean();
+        const ids = orderIds.map(order => order._id);
+        if (ids.length > 0) {
+            commissions = await Commission.find({
+                orderId: { $in: ids },
+                userRole: { $in: ['rider', 'partner'] }
+            })
+                .sort({ createdAt: -1 })
+                .limit(200)
+                .lean();
         }
-      });
+    }
+
+      const fallbackTransactions = commissions.map((commission, index) => ({
+        _id: commission._id || `${index}`,
+        type: 'earning',
+        amount: commission.amount,
+        description: `${commission.userRole === 'rider' ? 'Delivery' : 'Service'} Fee`,
+        orderId: commission.orderId,
+        createdAt: commission.confirmedAt || commission.createdAt
+      }));
+
+      earnings = { transactions: fallbackTransactions };
     }
 
     // Sort transactions by date (newest first)

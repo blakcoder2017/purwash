@@ -11,6 +11,7 @@ process.on('uncaughtException', err => {
 
 dotenv.config({ path: './.env' });
 const app = require('./app');
+require('./utils/cronJobs');
 
 const DB = process.env.DATABASE
 

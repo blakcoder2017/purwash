@@ -7,8 +7,8 @@ const CONFIG = {
         PAGE_SIZE: 10
     },
     production: {
-        API_BASE: 'https://purwash-api.com/api',
-        WS_URL: 'wss://purwash-api.com',
+        API_BASE: '/api',
+        WS_URL: '',
         REFRESH_INTERVAL: 60000, // 1 minute
         PAGE_SIZE: 20
     }

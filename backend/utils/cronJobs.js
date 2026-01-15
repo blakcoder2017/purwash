@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const Order = require('../models/Order');
-const AuditLog = require('../models/AuditLog');
+const AuditLog = require('../models/AuditLogs');
+const { processSettlements } = require('./settlement');
 
 // Runs every 15 minutes
 cron.schedule('*/15 * * * *', async () => {
@@ -25,4 +26,9 @@ cron.schedule('*/15 * * * *', async () => {
     
     console.log(`[System] Auto-confirmed Order #${order.friendlyId}`);
   }
+});
+
+// Runs every hour to move commissions to ready_for_payout (T+1)
+cron.schedule('0 * * * *', async () => {
+  await processSettlements();
 });

@@ -93,6 +93,31 @@ exports.updateOnlineStatus = async (req, res) => {
   }
 };
 
+// Register Expo push token for the current user
+exports.registerPushToken = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Token is required' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const existing = user.pushTokens || [];
+    if (!existing.includes(token)) {
+      user.pushTokens = [...existing, token];
+      await user.save();
+    }
+
+    res.json({ success: true, tokens: user.pushTokens });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.registerPartner = async (req, res) => {
   try {
     const { name, phone, password, role, momoNumber, momoNetwork, businessName, location } = req.body;

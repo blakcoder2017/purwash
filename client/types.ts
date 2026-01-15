@@ -53,20 +53,22 @@ export interface CreateOrderPayload {
 }
 
 export interface CalculatePriceResponseData {
-    pricing: {
-        items: number;
-        delivery: number;
-        system: string;
-        perItem: string;
-        total: number;
+    itemsSubtotal: number;
+    platformPercentageFee: number;
+    platformItemCommission: number;
+    deliveryFee: number;
+    totalAmount: number;
+    settlements?: {
+        platformRevenue: number;
+        riderPayout: number;
+        partnerPayout: number;
     };
-    config: {
-        platformCommission: string;
+    config?: {
+        platformFeePercentage: number;
         deliveryFee: number;
-        systemPerItemFee: number;
+        platformPerItemFee: number;
         minOrderAmount: number;
     };
-    totalAmount: number;
 }
 
 export interface LaundryItem {

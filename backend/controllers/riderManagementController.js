@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Order = require('../models/Order');
 const Earnings = require('../models/Earnings');
+const Commission = require('../models/Commission');
 const logAction = require('../utils/auditLogger');
 
 // 1. Get all riders with filtering and pagination
@@ -73,8 +74,15 @@ exports.getAllRiders = async (req, res) => {
             totalEarnings: { $sum: '$pricing.totalAmount' }
           }}
         ]);
+
+        const commissionStats = await Commission.aggregate([
+          { $match: { userId: rider._id, userRole: 'rider' } },
+          { $group: { _id: null, totalEarnings: { $sum: '$amount' } } }
+        ]);
         
         const stats = orderStats[0] || { totalOrders: 0, completedOrders: 0, totalEarnings: 0 };
+        const commissionTotals = commissionStats[0] || { totalEarnings: 0 };
+        stats.totalEarnings = commissionTotals.totalEarnings || 0;
         
         // Get earnings from Earnings model if available
         const earnings = await Earnings.findOne({ userId: rider._id });
@@ -137,6 +145,11 @@ exports.getRiderById = async (req, res) => {
       }}
     ]);
 
+    const commissionStats = await Commission.aggregate([
+      { $match: { userId: rider._id, userRole: 'rider' } },
+      { $group: { _id: null, totalEarnings: { $sum: '$amount' } } }
+    ]);
+
     // Get earnings data
     const earnings = await Earnings.findOne({ userId: rider._id });
     
@@ -158,6 +171,8 @@ exports.getRiderById = async (req, res) => {
       totalEarnings: 0,
       avgOrderValue: 0 
     };
+    const commissionTotals = commissionStats[0] || { totalEarnings: 0 };
+    stats.totalEarnings = commissionTotals.totalEarnings || 0;
     
     const recent = recentStats[0] || { recentOrders: 0, recentEarnings: 0 };
 

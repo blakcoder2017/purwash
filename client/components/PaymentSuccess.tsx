@@ -1,70 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
-import Spinner from './Spinner';
+import { useLocation, useNavigate } from 'react-router-dom';
+import sbpBadge from '../images/SBP - Badge - White.png';
 
 const PaymentSuccess: React.FC = () => {
-  const [isVerifying, setIsVerifying] = useState(true);
-  const [orderData, setOrderData] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Get URL parameters
-  const urlParams = new URLSearchParams(window.location.search);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const urlParams = new URLSearchParams(location.search);
   const reference = urlParams.get('reference');
   const orderCode = urlParams.get('order');
-
-  useEffect(() => {
-    const verifyPayment = async () => {
-      try {
-        if (!reference) {
-          setError('No payment reference found');
-          setIsVerifying(false);
-          return;
-        }
-
-        // For now, simulate successful payment verification
-        // In production, this would verify with the backend
-        setTimeout(() => {
-          setOrderData({
-            trackingCode: orderCode || 'ORDER-123',
-            phone: '0551234567'
-          });
-          setIsVerifying(false);
-        }, 2000);
-      } catch (err) {
-        console.error('Payment verification error:', err);
-        setError('Unable to verify payment');
-        setIsVerifying(false);
-      }
-    };
-
-    verifyPayment();
-  }, [reference, orderCode]);
+  const phone = urlParams.get('phone');
 
   const handleTrackOrder = () => {
-    if (orderData?.phone && orderData?.trackingCode) {
-      window.location.href = `/track?phone=${orderData.phone}&code=${orderData.trackingCode}`;
+    if (phone && orderCode) {
+      navigate(`/track-order/${phone}/${orderCode}`);
     } else {
-      window.location.href = '/track';
+      navigate('/track');
     }
   };
 
-  if (isVerifying) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <div className="mb-6">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Spinner />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Verifying Payment</h2>
-            <p className="text-gray-600">Please wait while we confirm your payment...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
+  if (!orderCode) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
@@ -73,9 +28,9 @@ const PaymentSuccess: React.FC = () => {
               <span className="text-2xl">❌</span>
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Error</h2>
-            <p className="text-gray-600 mb-4">{error}</p>
+            <p className="text-gray-600 mb-4">Order details are missing. Please track your order manually.</p>
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => navigate('/')}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               Back to Home
@@ -105,12 +60,12 @@ const PaymentSuccess: React.FC = () => {
           </motion.div>
           
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Payment Successful!</h2>
-          <p className="text-gray-600 mb-6">Your order has been placed successfully</p>
+          <p className="text-gray-600 mb-6">Chaley, you dey form!!!</p>
           
-          {orderData && (
+          {orderCode && (
             <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-6">
               <p className="text-sm text-gray-600 mb-1">Your order code is:</p>
-              <p className="text-2xl font-bold text-blue-600">{orderData.trackingCode}</p>
+              <p className="text-2xl font-bold text-blue-600">{orderCode}</p>
             </div>
           )}
           
@@ -123,7 +78,7 @@ const PaymentSuccess: React.FC = () => {
             </button>
             
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => navigate('/')}
               className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
             >
               Back to Home
@@ -132,9 +87,16 @@ const PaymentSuccess: React.FC = () => {
         </div>
         
         <div className="border-t pt-6">
+          <div className="flex justify-center mb-4">
+            <img
+              src={sbpBadge}
+              alt="Secured by Paystack"
+              className="h-7 w-auto opacity-90"
+              loading="lazy"
+            />
+          </div>
           <div className="text-center text-sm text-gray-500">
-            <p>Reference: {reference}</p>
-            <p className="mt-1">You'll receive order updates via WhatsApp/SMS</p>
+            <p>Reference: {reference || 'N/A'}</p>
           </div>
         </div>
       </motion.div>

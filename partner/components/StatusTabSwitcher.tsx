@@ -7,6 +7,7 @@ interface StatusTabSwitcherProps {
 }
 
 const statusTabs: { id: FilterStatus; label: string }[] = [
+    { id: 'assigned', label: 'Incoming' },
     { id: 'dropped_at_laundry', label: 'In Shop' },
     { id: 'washing', label: 'Washing' },
     { id: 'ready_for_pick', label: 'Ready' },

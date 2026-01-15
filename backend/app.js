@@ -36,18 +36,27 @@ app.use(
 );
 
 // 2) CORS CONFIGURATION
+const allowedOrigins = new Set([
+  'http://localhost:3000',  // Client app
+  'http://localhost:3001',  // Admin app
+  'http://localhost:3002',  // Partner app
+  'http://localhost:3003',  // Rider app
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:3002',
+  'http://127.0.0.1:3003'
+]);
+
 const corsOptions = {
-  origin: true,
-  origin: [
-    'http://localhost:3000',  // Client app
-    'http://localhost:3001',  // Admin app
-    'http://localhost:3002',  // Partner app
-    'http://localhost:3003',  // Rider app
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-    'http://127.0.0.1:3002',
-    'http://127.0.0.1:3003'
-  ],
+  origin: (origin, callback) => {
+    if (!origin) {
+      return callback(null, true);
+    }
+    if (allowedOrigins.has(origin) || origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret'],
@@ -69,6 +78,33 @@ app.use((req, res, next) => {
   req.requestTime = new Date().toISOString();
   next();
 });
+
+// #region agent log
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  res.on('finish', () => {
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H1',
+        location: 'backend/app.js:78',
+        message: 'api_request_completed',
+        data: {
+          method: req.method,
+          path: req.originalUrl,
+          status: res.statusCode,
+          durationMs: Date.now() - startTime
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+  });
+  next();
+});
+// #endregion
 
 // 5) LOGGING IN DEV
 if (process.env.NODE_ENV === 'development') {

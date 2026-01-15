@@ -86,17 +86,17 @@ const TrackOrder: React.FC<TrackOrderProps> = ({ onBack }) => {
 
   return (
     <div className="min-h-screen p-6 md:p-10 text-slate-900 animate-fade-in">
-        <header className="mb-8">
+        <header className="mb-8 max-w-3xl mx-auto">
             <button onClick={onBack} className="text-slate-900 font-semibold mb-4 hover:underline">
             &larr; Back to Home
             </button>
-            <h1 className="text-4xl font-extrabold tracking-tight">Track Your Order</h1>
-            <p className="text-slate-500 mt-2">Enter your phone number and order code to track your order.</p>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight">Track Your Order</h1>
+            <p className="text-slate-500 mt-2 text-base sm:text-lg">Enter your phone number and order code to track your order.</p>
         </header>
 
         <main>
             {/* Toggle between tracking methods */}
-            <div className="mb-6">
+            <div className="mb-6 max-w-3xl mx-auto">
                 <div className="flex space-x-4">
                     <button
                         type="button"
@@ -123,12 +123,12 @@ const TrackOrder: React.FC<TrackOrderProps> = ({ onBack }) => {
                 </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 max-w-lg mb-8">
+            <form onSubmit={handleSubmit} className="space-y-4 max-w-3xl mx-auto mb-8">
                 <input 
                     type="tel" 
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full border-slate-300 rounded-md shadow-sm p-3 text-lg focus:ring-slate-900 focus:border-slate-900" 
+                    className="w-full border-slate-300 rounded-xl shadow-sm p-4 text-lg sm:text-xl focus:ring-slate-900 focus:border-slate-900" 
                     placeholder="055 123 4567"
                 />
                 
@@ -137,7 +137,7 @@ const TrackOrder: React.FC<TrackOrderProps> = ({ onBack }) => {
                         type="text" 
                         value={orderCode}
                         onChange={(e) => setOrderCode(e.target.value.toUpperCase())}
-                        className="w-full border-slate-300 rounded-md shadow-sm p-3 text-lg focus:ring-slate-900 focus:border-slate-900 uppercase" 
+                        className="w-full border-slate-300 rounded-xl shadow-sm p-4 text-lg sm:text-xl focus:ring-slate-900 focus:border-slate-900 uppercase" 
                         placeholder="Order Code (e.g., WASH-1234)"
                     />
                 )}
@@ -145,21 +145,21 @@ const TrackOrder: React.FC<TrackOrderProps> = ({ onBack }) => {
                 <button 
                     type="submit" 
                     disabled={isLoading}
-                    className="w-full bg-slate-900 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-slate-800 transition-colors duration-300 disabled:bg-slate-400 flex items-center justify-center"
+                    className="w-full bg-slate-900 text-white font-semibold py-4 px-6 rounded-2xl shadow-lg hover:bg-slate-800 transition-colors duration-300 disabled:bg-slate-400 flex items-center justify-center text-base sm:text-lg"
                 >
                     {isLoading ? <Spinner /> : 'Track Order'}
                 </button>
             </form>
 
             {error && !data?.orders.length && !trackingData && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-300 text-red-800 rounded-lg text-sm text-center max-w-lg" role="alert">
+                <div className="mt-4 p-3 bg-red-50 border border-red-300 text-red-800 rounded-lg text-sm text-center max-w-3xl mx-auto" role="alert">
                     <p>{error}</p>
                 </div>
             )}
 
             {/* New tracking data display */}
             {trackingData && (
-                <section className="space-y-6 max-w-2xl">
+                <section className="space-y-6 max-w-3xl mx-auto">
                     <h2 className="text-2xl font-bold">
                         Order {trackingData.order.friendlyId}
                     </h2>
@@ -235,7 +235,7 @@ const TrackOrder: React.FC<TrackOrderProps> = ({ onBack }) => {
 
             {/* Legacy tracking data display */}
             {data && !trackingData && (
-                <section>
+                <section className="max-w-3xl mx-auto">
                     <h2 className="text-2xl font-bold mb-4">
                         Hello, {data.client.name}!
                     </h2>

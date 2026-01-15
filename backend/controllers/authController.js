@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { generateToken } = require('../utils/jwt');
+const mongoose = require('mongoose');
 const { comparePassword } = require('../utils/password');
 const paystack = require('../utils/paystack');
 
@@ -110,9 +111,48 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // #region agent log
+    const readPref = mongoose.connection.getClient()?.readPreference?.mode || null;
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        location: 'backend/controllers/authController.js:112',
+        message: 'auth_login_attempt',
+        data: {
+          hasEmail: Boolean(email),
+          hasPassword: Boolean(password),
+          passwordLength: password ? String(password).length : 0,
+          dbName: mongoose.connection.name || null,
+          dbHost: mongoose.connection.host || null,
+          readPreference: readPref
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+
     // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'H6',
+          location: 'backend/controllers/authController.js:116',
+          message: 'auth_login_user_not_found',
+          data: { emailProvided: Boolean(email) },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -121,6 +161,21 @@ const login = async (req, res) => {
 
     // Check if user is active
     if (!user.isActive) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'H7',
+          location: 'backend/controllers/authController.js:126',
+          message: 'auth_login_inactive',
+          data: { accountStatus: user.accountStatus },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
       return res.status(401).json({
         success: false,
         message: 'Account is deactivated'
@@ -129,6 +184,21 @@ const login = async (req, res) => {
 
     // Check account status
     if (user.accountStatus === 'banned') {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'H8',
+          location: 'backend/controllers/authController.js:136',
+          message: 'auth_login_banned',
+          data: { accountStatus: user.accountStatus },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
       return res.status(401).json({
         success: false,
         message: 'Account is banned'
@@ -136,8 +206,69 @@ const login = async (req, res) => {
     }
 
     // Verify password
+    // #region agent log
+    const loginHashParts = user.password ? String(user.password).split('$') : [];
+    const loginHashMeta = loginHashParts.length >= 3 ? { algo: loginHashParts[1], rounds: loginHashParts[2] } : null;
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H12',
+        location: 'backend/controllers/authController.js:140',
+        message: 'auth_login_password_check',
+        data: {
+          userId: user._id ? String(user._id) : null,
+          looksHashed: typeof user.password === 'string' && user.password.startsWith('$2'),
+          role: user.role,
+          hashMeta: loginHashMeta,
+          dbHost: mongoose.connection.host || null
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     const isPasswordValid = await comparePassword(password, user.password);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H13',
+        location: 'backend/controllers/authController.js:149',
+        message: 'auth_login_password_result',
+        data: {
+          userId: user._id ? String(user._id) : null,
+          isPasswordValid
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     if (!isPasswordValid) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'H9',
+          location: 'backend/controllers/authController.js:145',
+          message: 'auth_login_password_mismatch',
+          data: {
+            emailProvided: Boolean(email),
+            userId: user._id ? String(user._id) : null,
+            role: user.role,
+            dbName: mongoose.connection.name || null
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -154,6 +285,26 @@ const login = async (req, res) => {
       email: user.email,
       role: user.role
     });
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H3',
+        location: 'backend/controllers/authController.js:156',
+        message: 'auth_login_success',
+        data: {
+          role: user.role,
+          isActive: user.isActive,
+          accountStatus: user.accountStatus
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
 
     res.json({
       success: true,
@@ -203,7 +354,7 @@ const getProfile = async (req, res) => {
  */
 const updateProfile = async (req, res) => {
   try {
-    const { profile } = req.body;
+    const { profile = {}, businessName, bio, operatingHours, location } = req.body;
     const user = await User.findById(req.user.id);
 
     if (!user) {
@@ -218,6 +369,26 @@ const updateProfile = async (req, res) => {
     if (profile.lastName) user.profile.lastName = profile.lastName;
     if (profile.phone) user.profile.phone = profile.phone;
     if (profile.avatar) user.profile.avatar = profile.avatar;
+
+    if (typeof businessName === 'string') {
+      user.businessName = businessName;
+    }
+    if (typeof bio === 'string') {
+      user.bio = bio;
+    }
+    if (operatingHours?.open || operatingHours?.close) {
+      user.operatingHours = {
+        open: operatingHours.open || user.operatingHours?.open,
+        close: operatingHours.close || user.operatingHours?.close
+      };
+    }
+    if (location?.address || location?.lat || location?.lng) {
+      user.location = {
+        address: location.address || user.location?.address,
+        lat: location.lat ?? user.location?.lat,
+        lng: location.lng ?? user.location?.lng
+      };
+    }
 
     await user.save();
 

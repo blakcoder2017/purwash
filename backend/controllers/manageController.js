@@ -63,9 +63,9 @@ exports.getPendingOrders = async (req, res) => {
     let orders;
     
     if (userRole === 'rider') {
-      // Rider sees: client info, partner info, full pricing, delivery fee
+      // Rider sees: assigned through delivery workflow
       orders = await Order.find({ 
-        status: 'assigned',
+        status: { $in: ['assigned', 'on_my_way_to_pick', 'picked_up', 'dropped_at_laundry', 'washing', 'ready_for_pick', 'out_for_delivery'] },
         rider: userId 
       })
       .populate('laundry', 'businessName profile.firstName profile.lastName phone')

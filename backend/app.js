@@ -18,6 +18,7 @@ const laundryItemRoutes = require('./routes/laundryItemRoutes');
 const authRoutes = require('./routes/auth');
 const partnerRegistrationRoutes = require('./routes/partnerRegistration');
 const walletRoutes = require('./routes/walletRoutes');
+const cronRoutes = require('./routes/cronRoutes');
 
 const app = express();
 
@@ -124,6 +125,7 @@ app.use('/api/admin', adminRoutes); // Admin routes (protected)
 app.use('/api/catalog', laundryItemRoutes); // Temporarily commented
 app.use('/api/webhook', webhookRoutes); // Webhook routes
 app.use('/api/wallet', walletRoutes); // Temporarily commented
+app.use('/api/cron', cronRoutes);
 
 
 // 7) HEALTH CHECK

@@ -30,8 +30,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     if (storedToken && storedUser) {
       try {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        console.log('Loaded user from localStorage:', parsedUser);
+        
+        // Check if essential profile data is missing
+        if (!parsedUser.profile || !parsedUser.profile.firstName || !parsedUser.accountStatus) {
+          console.log('Profile data is missing, clearing cache');
+          localStorage.removeItem('PurWashPartnerToken');
+          localStorage.removeItem('PurWashPartnerUser');
+          // Force logout to trigger fresh login
+          setUser(null);
+          setToken(null);
+        } else {
+          setToken(storedToken);
+          setUser(parsedUser);
+        }
       } catch (error) {
         console.error('Failed to parse stored user:', error);
         localStorage.removeItem('PurWashPartnerToken');
@@ -42,6 +55,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const login = (userData: User, authToken: string) => {
+    console.log('Login received user data:', userData);
     setUser(userData);
     setToken(authToken);
     localStorage.setItem('PurWashPartnerToken', authToken);

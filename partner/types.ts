@@ -21,6 +21,20 @@ export interface User {
     };
     paystack?: {
         subaccountCode: string;
+        recipientCode?: string;
+    };
+    accountStatus?: 'active' | 'suspended' | 'banned';
+    isOnline?: boolean;
+    createdAt?: string;
+    lastLogin?: string;
+    operatingHours?: {
+        open: string;
+        close: string;
+    };
+    bio?: string;
+    wallet?: {
+        totalEarned: number;
+        pendingBalance: number;
     };
 }
 

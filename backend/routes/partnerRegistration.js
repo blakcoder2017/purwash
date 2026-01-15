@@ -4,7 +4,8 @@ const {
   stepOneBasicInfo,
   stepTwoBusinessInfo,
   stepThreePaymentSetup,
-  getRegistrationStatus
+  getRegistrationStatus,
+  verifyMoMoAndCreateRecipient
 } = require('../controllers/partnerRegistrationController');
 const { authenticateToken } = require('../middleware/auth');
 const { validateStepOne, validateStepTwo, validateStepThree } = require('../middleware/registrationValidation');
@@ -27,5 +28,8 @@ router.post('/step-3', authenticateToken, validateStepThree, stepThreePaymentSet
 
 // Get registration status (Protected)
 router.get('/status', authenticateToken, getRegistrationStatus);
+
+// Verify MoMo and create recipient (Protected - for post-registration verification)
+router.post('/verify-momo', authenticateToken, verifyMoMoAndCreateRecipient);
 
 module.exports = router;

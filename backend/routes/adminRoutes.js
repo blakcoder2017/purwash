@@ -13,7 +13,9 @@ const {
   cancelOrder,
   getInvestorMetrics, 
   banUser,
-  unbanUser
+  unbanUser,
+  initiatePayout,
+  getPayoutsSummary
 } = require('../controllers/adminController');
 
 const {
@@ -82,6 +84,10 @@ router.get('/partners/locations', getPartnerLocations);
 // === USER MANAGEMENT (GENERAL) ===
 router.post('/ban-user', banUser);
 router.post('/unban-user', unbanUser);
+
+// === PAYOUT MANAGEMENT ===
+router.post('/payout/initiate', initiatePayout);
+router.get('/payouts/summary', getPayoutsSummary);
 
 // === ADMIN USER MANAGEMENT ===
 // Get current admin profile

@@ -201,143 +201,215 @@ const stepThreePaymentSetup = async (req, res) => {
       });
     }
 
-    // Update payment information with Paystack verification
-    let moMoVerificationSuccess = false;
+    // Save MoMo info first
+    user.momo = {
+      number: momoNumber,
+      network: momoNetwork,
+      resolvedName: '', // Will be filled below
+      isVerified: false // Will be updated after verification
+    };
+
+    // Try to resolve MoMo name and create recipient (optional - don't fail if this fails)
     try {
-      console.log('Starting Paystack verification for:', momoNumber, momoNetwork);
+      console.log('Attempting to resolve MoMo name...');
+      
+      // Add delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // 1. Resolve MoMo Name (Verification)
       const resolve = await paystack.get(`/bank/resolve?account_number=${momoNumber}&bank_code=${momoNetwork.toUpperCase()}`);
       const resolvedName = resolve.data.data.account_name;
-      console.log('MoMo resolved successfully:', resolvedName);
+      
+      console.log('MoMo name resolved:', resolvedName);
 
-      // 2. Create Paystack Subaccount
-      const subaccount = await paystack.post('/subaccount', {
-        business_name: user.businessName || user.profile.firstName,
-        settlement_bank: momoNetwork.toUpperCase(),
-        account_number: momoNumber,
-        percentage_charge: 0,
-        description: `PurWash ${user.role}: ${user.profile.firstName} ${user.profile.lastName}`
-      });
-      console.log('Subaccount created successfully');
+      // Add another delay before creating recipient
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // 3. Create Transfer Recipient (For payouts)
+      // 2. Create Transfer Recipient (For Payouts)
       const recipient = await paystack.post('/transferrecipient', {
         type: "mobile_money",
         name: resolvedName,
         account_number: momoNumber,
         bank_code: momoNetwork.toUpperCase(),
-        currency: "GHS"
+        currency: "GHS",
+        description: `PurWash Payout: ${user.profile.firstName}` 
       });
-      console.log('Transfer recipient created successfully');
 
-      // Update user with verified MoMo info
-      user.momo = {
-        number: momoNumber,
-        network: momoNetwork,
-        resolvedName,
-        isVerified: true
-      };
+      console.log('Transfer recipient created:', recipient.data.data.recipient_code);
+
+      // Update with successful verification
+      user.momo.resolvedName = resolvedName;
+      user.momo.isVerified = true;
       
       user.paystack = {
-        subaccountCode: subaccount.data.data.subaccount_code,
-        recipientCode: recipient.data.data.recipient_code
+        recipientCode: recipient.data.data.recipient_code,
+        bankName: momoNetwork.toUpperCase(),
+        accountName: resolvedName
       };
 
-      moMoVerificationSuccess = true;
-      console.log('Paystack verification completed successfully');
-
-    } catch (error) {
-      console.error('Paystack verification error:', error.response?.data || error.message);
+    } catch (paystackError) {
+      console.error('Paystack verification failed, saving without verification:', paystackError.message);
       
-      // If Paystack verification fails, still save the info but mark as unverified
-      user.momo = {
-        number: momoNumber,
-        network: momoNetwork,
-        resolvedName: '',
-        isVerified: false
+      // Check if it's a rate limit error
+      if (paystackError.response?.status === 429) {
+        console.log('Paystack rate limit hit - saving without verification for now');
+      }
+      
+      // Save without Paystack verification - user can complete later
+      user.momo.resolvedName = '';
+      user.momo.isVerified = false;
+      
+      user.paystack = {
+        recipientCode: '',
+        bankName: '',
+        accountName: ''
       };
-      
-      // Don't fail the entire registration if Paystack fails
-      console.log('Registration continuing without Paystack verification');
     }
-    user.profilePicture = profilePicture || '';
 
-    // Add rider-specific emergency contact
-    if (user.role === 'rider' && emergencyContact) {
-      user.emergencyContact = {
-        name: emergencyContact.name || '',
-        phone: emergencyContact.phone || '',
-        relationship: emergencyContact.relationship || ''
-      };
+    if (profilePicture) {
+      user.profile.avatar = profilePicture;
+    }
+
+    if (emergencyContact && user.role === 'rider') {
+      user.emergencyContact = emergencyContact;
     }
 
     await user.save();
 
-    // Generate final token
-    const finalToken = generateToken({
+    // Generate final token with clean payload
+    const token = generateToken({
       id: user._id,
       email: user.email,
       role: user.role
     });
 
-    // Get profile completeness
-    const completeness = user.getProfileCompleteness();
-    const missingFields = user.getMissingFields();
-
-    // Create success message based on MoMo verification
-    const successMessage = moMoVerificationSuccess 
-      ? `Registration completed successfully! MoMo account verified for ${user.momo.resolvedName}`
-      : 'Registration completed successfully! MoMo verification pending - you can complete this later';
-
     res.json({
       success: true,
-      message: successMessage,
-      step: 3,
+      message: user.momo.isVerified 
+        ? 'Registration completed successfully! Your payment details have been verified.'
+        : 'Registration completed successfully! You can complete business verification in dashboard.',
       isComplete: true,
       data: {
         user: {
           id: user._id,
           email: user.email,
           profile: user.profile,
-          role: user.role,
           businessName: user.businessName,
           location: user.location,
-          bio: user.bio,
-          operatingHours: user.operatingHours,
           momo: {
             number: user.momo.number,
             network: user.momo.network,
             resolvedName: user.momo.resolvedName,
             isVerified: user.momo.isVerified
           },
-          profilePicture: user.profilePicture,
-          ...(user.role === 'rider' && {
-            vehicleType: user.vehicleType,
-            vehicleNumber: user.vehicleNumber,
-            emergencyContact: user.emergencyContact
-          })
+          paystack: user.paystack,
+          isActive: user.isActive
         },
-        token: finalToken,
-        profileCompleteness: {
-          completeness,
-          missingFields,
-          isComplete: completeness === 100
-        }
+        token
       }
     });
+
   } catch (error) {
+    console.error('Step 3 error:', error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Server error during payment setup',
       step: 3
     });
   }
 };
 
 /**
- * Get current registration status
+ * Verify MoMo and create Paystack recipient (for existing users)
  */
+const verifyMoMoAndCreateRecipient = async (req, res) => {
+  try {
+    const userId = req.user.id; // From authenticated token
+    const { momoNumber, momoNetwork } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if already verified
+    if (user.momo?.isVerified && user.paystack?.recipientCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'MoMo already verified'
+      });
+    }
+
+    console.log('Verifying MoMo for existing user:', userId);
+
+    // Add delay to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // 1. Resolve MoMo Name
+    const resolve = await paystack.get(`/bank/resolve?account_number=${momoNumber}&bank_code=${momoNetwork.toUpperCase()}`);
+    const resolvedName = resolve.data.data.account_name;
+    
+    console.log('MoMo name resolved:', resolvedName);
+
+    // Add another delay before creating recipient
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 2. Create Transfer Recipient
+    const recipient = await paystack.post('/transferrecipient', {
+      type: "mobile_money",
+      name: resolvedName,
+      account_number: momoNumber,
+      bank_code: momoNetwork.toUpperCase(),
+      currency: "GHS",
+      description: `PurWash Payout: ${user.profile.firstName}` 
+    });
+
+    console.log('Transfer recipient created:', recipient.data.data.recipient_code);
+
+    // Update user with verification
+    user.momo = {
+      number: momoNumber,
+      network: momoNetwork,
+      resolvedName: resolvedName,
+      isVerified: true
+    };
+    
+    user.paystack = {
+      recipientCode: recipient.data.data.recipient_code,
+      bankName: momoNetwork.toUpperCase(),
+      accountName: resolvedName
+    };
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'MoMo verification completed successfully!',
+      data: {
+        momo: user.momo,
+        paystack: user.paystack
+      }
+    });
+
+  } catch (error) {
+    console.error('MoMo verification error:', error);
+    
+    if (error.response?.status === 429) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many verification attempts. Please try again in a few minutes.'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Verification failed'
+    });
+  }
+};
 const getRegistrationStatus = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -400,5 +472,6 @@ module.exports = {
   stepOneBasicInfo,
   stepTwoBusinessInfo,
   stepThreePaymentSetup,
-  getRegistrationStatus
+  getRegistrationStatus,
+  verifyMoMoAndCreateRecipient
 };

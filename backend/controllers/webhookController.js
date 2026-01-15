@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const Order = require('../models/Order');
 const User = require('../models/User');
+const Commission = require('../models/Commission');
 
 /**
  * Verify Paystack webhook signature
@@ -86,6 +87,16 @@ const handleSuccessfulCharge = async (chargeData) => {
       
       await order.save();
       
+      // Create commissions for this order
+      try {
+        console.log('Creating commissions for order:', order._id);
+        await Commission.createOrderCommissions(order, 'client');
+        console.log('Commissions created successfully');
+      } catch (commissionError) {
+        console.error('Error creating commissions:', commissionError);
+        // Don't fail the webhook, but log the error
+      }
+      
       // Update rider stats if applicable
       if (order.rider) {
         const rider = await User.findById(order.rider);
@@ -96,7 +107,7 @@ const handleSuccessfulCharge = async (chargeData) => {
         }
       }
       
-      console.log(`Order ${reference} marked as paid`);
+      console.log(`Order ${reference} marked as paid and commissions created`);
       
       // TODO: Send notification to client
       // TODO: Send notification to rider/partner

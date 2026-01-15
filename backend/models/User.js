@@ -66,10 +66,11 @@ const UserSchema = new mongoose.Schema({
     isVerified: { type: Boolean, default: false }
   },
   
-  // Paystack Integration Codes
+  // Paystack Integration - SIMPLIFIED
   paystack: {
-    subaccountCode: String,
-    recipientCode: String
+    recipientCode: String,     // REQUIRED - For sending transfers
+    bankName: String,         // Store resolved bank name
+    accountName: String       // Store resolved account name
   },
 
   // Emergency contact for riders

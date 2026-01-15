@@ -46,17 +46,25 @@ const CommissionSchema = new mongoose.Schema({
     formula: String           // Human-readable formula
   },
   
-  // Payment tracking
-  paymentDetails: {
-    paystackReference: String,     // Paystack transaction reference
-    splitReference: String,        // Paystack split reference
-    disbursementReference: String, // Paystack disbursement reference
-    status: {
-      type: String,
-      enum: ['pending', 'processing', 'paid', 'failed'],
-      default: 'pending'
-    },
-    paidAt: Date,
+  // Payout Tracking - SIMPLIFIED
+  payoutStatus: {
+    type: String,
+    enum: [
+      'pending_settlement', // Just earned, waiting for T+1
+      'ready_for_payout',   // 24h passed, Admin can transfer now
+      'processing',         // Transfer initiated
+      'paid',               // Money sent successfully
+      'failed'              // Transfer failed
+    ],
+    default: 'pending_settlement',
+    index: true
+  },
+  
+  // Paystack Transfer Details
+  transferDetails: {
+    transferCode: String,      // Paystack Transfer Code (TRF_...)
+    reference: String,         // Unique Payout Ref
+    transferredAt: Date,
     failureReason: String
   },
   
@@ -92,7 +100,7 @@ const CommissionSchema = new mongoose.Schema({
   indexes: [
     { userId: 1, createdAt: -1 },
     { orderId: 1, userId: 1 },
-    { 'paymentDetails.status': 1 },
+    { payoutStatus: 1, createdAt: -1 },
     { commissionType: 1, createdAt: -1 }
   ]
 });
@@ -139,10 +147,7 @@ CommissionSchema.statics.createOrderCommissions = async function(order, confirme
       totalRevenue: platformRevenuePesewas / 100,
       formula: `${(platformPercentageFeePesewas / 100)} (percentage) + ${(totalItemCommissionPesewas / 100)} (item fees) = ${(platformRevenuePesewas / 100)}`
     },
-    paymentDetails: {
-      paystackReference: order.paymentDetails.reference,
-      status: 'pending'
-    },
+    payoutStatus: 'pending_settlement', // New status field
     orderStatus: order.status,
     confirmedBy,
     notes: 'Platform revenue from percentage fee + per-item commission'
@@ -161,10 +166,7 @@ CommissionSchema.statics.createOrderCommissions = async function(order, confirme
         percentage: 100,
         formula: `${(deliveryFeePesewas / 100)} × 100% = ${(riderPayoutPesewas / 100)}`
       },
-      paymentDetails: {
-        paystackReference: order.paymentDetails.reference,
-        status: 'pending'
-      },
+      payoutStatus: 'pending_settlement', // New status field
       orderStatus: order.status,
       confirmedBy,
       notes: 'Rider payout from delivery fee (100%)'
@@ -186,10 +188,7 @@ CommissionSchema.statics.createOrderCommissions = async function(order, confirme
         },
         formula: `${(baseCostPesewas / 100)} - ${(totalItemCommissionPesewas / 100)} (item fees) = ${(partnerPayoutPesewas / 100)}`
       },
-      paymentDetails: {
-        paystackReference: order.paymentDetails.reference,
-        status: 'pending'
-      },
+      payoutStatus: 'pending_settlement', 
       orderStatus: order.status,
       confirmedBy,
       notes: 'Partner payout (base cost minus platform per-item fees)'
@@ -211,6 +210,9 @@ CommissionSchema.statics.updateWalletBalances = async function(commissions) {
   const Earnings = mongoose.model('Earnings');
   
   for (const commission of commissions) {
+    // Skip platform commissions (userId is null)
+    if (!commission.userId) continue;
+    
     // Update user wallet
     await User.findByIdAndUpdate(commission.userId, {
       $inc: {
@@ -220,21 +222,29 @@ CommissionSchema.statics.updateWalletBalances = async function(commissions) {
     });
     
     // Add to earnings transactions
-    await Earnings.findOneAndUpdate(
-      { userId: commission.userId },
-      {
-        $push: {
-          transactions: {
-            type: 'earning',
-            amount: commission.amount,
-            description: `${commission.userRole} commission - ${commission.commissionType}`,
-            orderId: commission.orderId,
-            createdAt: commission.confirmedAt
+    try {
+      await Earnings.findOneAndUpdate(
+        { userId: commission.userId },
+        {
+          $push: {
+            transactions: {
+              type: 'earning',
+              amount: commission.amount,
+              description: `${commission.userRole} commission - ${commission.commissionType}`,
+              orderId: commission.orderId,
+              createdAt: commission.confirmedAt
+            }
+          },
+          $inc: {
+            'wallet.totalEarned': commission.amount,
+            'wallet.pendingBalance': commission.amount
           }
-        }
-      },
-      { upsert: true, new: true }
-    );
+        },
+        { upsert: true, new: true }
+      );
+    } catch (error) {
+      console.error('Error updating earnings for user:', commission.userId, error);
+    }
   }
 };
 

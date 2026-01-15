@@ -75,6 +75,8 @@ const PartnerRegistrationScreen: React.FC = () => {
     setLoading(true);
     setError('');
 
+    console.log('Sending stepOneData:', stepOneData);
+
     try {
       const response = await partnerApi.stepOne(stepOneData);
       if (response.success) {
@@ -84,6 +86,7 @@ const PartnerRegistrationScreen: React.FC = () => {
         setError(response.message || 'Step 1 failed');
       }
     } catch (err) {
+      console.error('Step 1 error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
@@ -118,13 +121,8 @@ const PartnerRegistrationScreen: React.FC = () => {
       if (response.success) {
         login(response.data.user, response.data.token);
         
-        // Show success message with resolved name if available
-        const resolvedName = response.data.user?.momo?.resolvedName;
-        if (resolvedName) {
-          alert(`Registration completed successfully! MoMo account verified for ${resolvedName}`);
-        } else {
-          alert('Registration completed successfully! MoMo verification pending - you can complete this later');
-        }
+        // Show success message
+        alert('Registration completed successfully! You can complete business verification in your dashboard.');
         
         window.location.href = '/dashboard';
       } else {
@@ -336,7 +334,7 @@ const PartnerRegistrationScreen: React.FC = () => {
           Back
         </button>
         <button onClick={handleStepThree} disabled={loading} className={`${buttonClasses} flex-1`}>
-          {loading ? 'Verifying MoMo Account...' : 'Complete Registration'}
+          {loading ? 'Completing Registration...' : 'Complete Registration'}
         </button>
       </div>
     </div>

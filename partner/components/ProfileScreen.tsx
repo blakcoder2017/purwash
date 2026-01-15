@@ -7,6 +7,18 @@ const ProfileScreen: React.FC = () => {
 
   if (!user) return null;
 
+  // Log specific fields for debugging
+  console.log('Account Status:', user.accountStatus);
+  console.log('Is Online:', user.isOnline);
+  console.log('Created At:', user.createdAt);
+  console.log('Full user object:', user);
+
+  const clearCacheAndRelogin = () => {
+    localStorage.removeItem('PurWashPartnerToken');
+    localStorage.removeItem('PurWashPartnerUser');
+    window.location.href = '/login';
+  };
+
   return (
     <div className="p-4 space-y-6">
       <h1 className="text-3xl font-bold text-primary">Profile</h1>
@@ -47,7 +59,7 @@ const ProfileScreen: React.FC = () => {
           <div className="flex justify-between">
             <span className="font-semibold text-gray-600">Owner Name:</span>
             <span className="font-bold text-primary">
-              {user.profile.firstName} {user.profile.lastName}
+              {user.profile?.firstName || ''} {user.profile?.lastName || ''}
             </span>
           </div>
           <div className="flex justify-between">
@@ -56,16 +68,16 @@ const ProfileScreen: React.FC = () => {
           </div>
           <div className="flex justify-between">
             <span className="font-semibold text-gray-600">Phone:</span>
-            <span className="font-bold text-primary">{user.profile.phone}</span>
+            <span className="font-bold text-primary">{user.profile?.phone || 'Not set'}</span>
           </div>
           <div className="flex justify-between">
             <span className="font-semibold text-gray-600">Location:</span>
-            <span className="font-bold text-primary text-sm">{user.location?.address}</span>
+            <span className="font-bold text-primary text-sm">{user.location?.address || 'Not set'}</span>
           </div>
           <div className="flex justify-between">
             <span className="font-semibold text-gray-600">Operating Hours:</span>
             <span className="font-bold text-primary">
-              {user.operatingHours?.open} - {user.operatingHours?.close}
+              {user.operatingHours?.open || 'Not set'} - {user.operatingHours?.close || 'Not set'}
             </span>
           </div>
           {user.bio && (
@@ -83,20 +95,20 @@ const ProfileScreen: React.FC = () => {
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="font-semibold text-gray-600">MoMo Network:</span>
-              <span className="font-bold text-primary uppercase">{user.momo.network}</span>
+              <span className="font-bold text-primary uppercase">{user.momo?.network || 'Not set'}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-semibold text-gray-600">MoMo Number:</span>
-              <span className="font-bold text-primary">{user.momo.number}</span>
+              <span className="font-bold text-primary">{user.momo?.number || 'Not set'}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-semibold text-gray-600">Verified Name:</span>
-              <span className="font-bold text-primary">{user.momo.resolvedName}</span>
+              <span className="font-bold text-primary">{user.momo?.resolvedName || 'Not verified'}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-semibold text-gray-600">Verification Status:</span>
-              <span className={`font-bold ${user.momo.isVerified ? 'text-green-600' : 'text-yellow-600'}`}>
-                {user.momo.isVerified ? '✅ Verified' : '⏳ Pending'}
+              <span className={`font-bold ${user.momo?.isVerified ? 'text-green-600' : 'text-yellow-600'}`}>
+                {user.momo?.isVerified ? '✅ Verified' : '⏳ Pending'}
               </span>
             </div>
             {user.paystack?.subaccountCode && (
@@ -121,7 +133,8 @@ const ProfileScreen: React.FC = () => {
               user.accountStatus === 'suspended' ? 'text-yellow-600' : 'text-red-600'
             }`}>
               {user.accountStatus === 'active' ? '✅ Active' : 
-               user.accountStatus === 'suspended' ? '⏸️ Suspended' : '🚫 Banned'}
+               user.accountStatus === 'suspended' ? '⏸️ Suspended' : 
+               user.accountStatus === 'banned' ? '🚫 Banned' : '📋 Unknown'}
             </span>
           </div>
           <div className="flex justify-between">
@@ -133,7 +146,7 @@ const ProfileScreen: React.FC = () => {
           <div className="flex justify-between">
             <span className="font-semibold text-gray-600">Member Since:</span>
             <span className="font-bold text-primary">
-              {new Date(user.createdAt).toLocaleDateString()}
+              {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Unknown'}
             </span>
           </div>
           {user.lastLogin && (
@@ -146,6 +159,14 @@ const ProfileScreen: React.FC = () => {
           )}
         </div>
       </div>
+      
+      <button 
+        onClick={clearCacheAndRelogin}
+        className="w-full mt-4 flex items-center justify-center p-4 bg-yellow-500 text-white font-bold text-lg rounded-md active:scale-95 transition-transform"
+      >
+        <span className="mr-2">🔄</span>
+        Clear Cache & Re-login
+      </button>
       
       <button 
         onClick={logout}

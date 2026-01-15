@@ -19,6 +19,7 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
   
   const [phone, setPhone] = useState('');
   const [clientName, setClientName] = useState('');
+  const [email, setEmail] = useState('');
   const [location, setLocation] = useState('');
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [isGpsLocation, setIsGpsLocation] = useState(false);
@@ -168,9 +169,29 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
     setClientName(e.target.value);
   };
 
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (error) setError(null);
+    setEmail(e.target.value);
+  };
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (error) setError(null);
     setPhone(e.target.value);
+  };
+
+  const handleCloseSuccess = () => {
+      onClose();
+      setIsSuccess(false);
+      setSelectedItems({});
+      setPhone('');
+      setClientName('');
+      setEmail('');
+      setLocation('');
+      setIsGpsLocation(false);
+      setPricingBreakdown(null);
+      setExistingClient(null);
+      setOrderCode('');
+      onTrackOrder();
   };
 
   const handleCreateOrder = async () => {
@@ -187,6 +208,7 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
         items: itemsForApi,
         phone,
         clientName,
+        email: email || null,
         location: locationPayload,
         paymentMethod,
         pickupTime: pickupTime ? new Date(pickupTime) : undefined
@@ -196,19 +218,10 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
       if (response.success) {
         setOrderCode(response.data.trackingCode);
         setIsSuccess(true);
+        // Auto-redirect after 5 seconds
         setTimeout(() => {
-          onClose();
-          setIsSuccess(false);
-          setSelectedItems({});
-          setPhone('');
-          setClientName('');
-          setLocation('');
-          setIsGpsLocation(false);
-          setPricingBreakdown(null);
-          setExistingClient(null);
-          setOrderCode('');
-          onTrackOrder();
-        }, 5000); // Longer delay to show order code
+           handleCloseSuccess();
+        }, 5000);
       }
     } catch (error) {
       console.error('Order creation failed:', error);
@@ -218,18 +231,47 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
     }
   };
 
-  const config = {
-    reference: new Date().getTime().toString(),
-    email: `${phone}@purwash.com`,
-    amount: Math.round(totalAmount * 100), // Amount in pesewas, ensure it's an integer
-    publicKey: paystackPublicKey,
-  };
+  // UPDATED PAYSTACK CONFIG
+  const paystackConfig = useMemo(() => {
+    return {
+      reference: new Date().getTime().toString(),
+      email: email || `${phone}@purwash.com`, // Use provided email or fallback
+      amount: Math.round(totalAmount * 100), // Amount in pesewas
+      publicKey: paystackPublicKey,
+      currency: 'GHS', // IMPORTANT: Specify currency for Ghana
+      channels: ['mobile_money', 'card'], // Enable relevant channels
+      metadata: {
+        custom_fields: [
+          {
+            display_name: "Client Name",
+            variable_name: "client_name",
+            value: clientName
+          },
+          {
+             display_name: "Phone Number",
+             variable_name: "phone",
+             value: phone
+          }
+        ]
+      }
+    };
+  }, [phone, totalAmount, paystackPublicKey, clientName, email]);
 
-  const initializePayment = usePaystackPayment(config);
+  const initializePayment = usePaystackPayment(paystackConfig);
 
-  const handlePaymentSuccess = async (reference: { reference: string }) => {
+  const handlePaymentSuccess = async (response: any) => {
+    // 1. Log the full response from Paystack
+    console.log("Paystack Payment Success Response:", response);
+    
+    // 2. Validate basic success indicators
+    if (response.status !== 'success' && response.message !== 'Approved') {
+        setError('Payment was not completed successfully. Please try again.');
+        return;
+    }
+
     setError(null);
     setIsCreatingOrder(true);
+    
     try {
       const locationPayload: LocationPayload = {
         addressName: location,
@@ -241,30 +283,21 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
         phone,
         clientName,
         location: locationPayload,
-        paystackReference: reference.reference
+        paystackReference: response.reference
       };
 
-      const response = await api.createOrder(orderPayload);
-      if (response.success) {
-        setOrderCode(response.data.trackingCode);
+      const apiResponse = await api.createOrder(orderPayload);
+      if (apiResponse.success) {
+        setOrderCode(apiResponse.data.trackingCode);
         setIsSuccess(true);
+        // Auto-redirect after 5 seconds
         setTimeout(() => {
-          onClose();
-          setIsSuccess(false);
-          setSelectedItems({});
-          setPhone('');
-          setClientName('');
-          setLocation('');
-          setIsGpsLocation(false);
-          setPricingBreakdown(null);
-          setExistingClient(null);
-          setOrderCode('');
-          onTrackOrder();
-        }, 5000); // Longer delay to show order code
+           handleCloseSuccess();
+        }, 5000);
       }
     } catch (error) {
       console.error('Order creation failed:', error);
-      setError('Your order could not be placed. Please contact support for assistance.');
+      setError('Payment successful, but order creation failed. Please contact support with Ref: ' + response.reference);
     } finally {
       setIsCreatingOrder(false);
     }
@@ -282,7 +315,10 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
     }
   };
 
-  const isFormValid = phone && clientName && location && itemsForApi.length > 0 && totalAmount > 0;
+  // Ensure paystackPublicKey is present before allowing form submission
+  const isFormValid = phone && clientName && location && itemsForApi.length > 0 && totalAmount > 0 && 
+    (paymentMethod === 'cash' || email); // Email required only for mobile money
+  const isPaystackReady = paymentMethod === 'cash' || (paystackPublicKey !== '' && paystackPublicKey.startsWith('pk_')); // Validate key presence
   const totalItems = useMemo(() => Object.values(selectedItems).reduce((acc, qty) => acc + qty, 0), [selectedItems]);
 
   if (isSuccess) {
@@ -293,16 +329,22 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
           animate={{ y: 0 }}
           exit={{ y: "100%" }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="bg-white w-full max-w-lg rounded-t-2xl p-6 h-1/2 flex flex-col items-center justify-center text-center"
+          className="bg-white w-full max-w-lg rounded-t-2xl p-6 min-h-[50vh] flex flex-col items-center justify-center text-center"
         >
           <div className="text-green-500 text-6xl mb-4">✓</div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">Order Placed Successfully!</h3>
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4 w-full">
             <p className="text-sm text-gray-600 mb-1">Your order code is:</p>
-            <p className="text-2xl font-bold text-blue-600">{orderCode}</p>
+            <p className="text-3xl font-bold text-blue-600 tracking-wider">{orderCode}</p>
           </div>
-          <p className="text-gray-600 mb-2">Save this code to track your order</p>
-          <p className="text-sm text-gray-500">You'll receive updates via WhatsApp/SMS</p>
+          <p className="text-gray-600 mb-6">Redirecting to order tracking...</p>
+          
+          <button 
+            onClick={handleCloseSuccess}
+            className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Track Order Now
+          </button>
         </motion.div>
       </div>
     );
@@ -378,6 +420,16 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
                   value={clientName}
                   onChange={handleNameChange}
                   placeholder="Your Name"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-gray-400">(for payment)</span></label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={handleEmailChange}
+                  placeholder="your@email.com"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -501,7 +553,7 @@ const OrderSheet: React.FC<OrderSheetProps> = ({ isOpen, onClose, onTrackOrder }
                   handleCreateOrder();
                 }
               }}
-              disabled={!isFormValid || isCreatingOrder || isCalculatingPrice}
+              disabled={!isFormValid || isCreatingOrder || isCalculatingPrice || !isPaystackReady}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
             >
               {(isCreatingOrder || isCalculatingPrice) && <Spinner />}

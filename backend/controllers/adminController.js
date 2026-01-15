@@ -1,7 +1,10 @@
 const Order = require('../models/Order');
 const User = require('../models/User');
 const AdminUser = require('../models/AdminUser');
+const Commission = require('../models/Commission');
 const logAction = require('../utils/auditLogger');
+const paystack = require('../utils/paystack');
+const mongoose = require('mongoose');
 
 // 1. Get Dashboard Stats
 exports.getDashboardStats = async (req, res) => {
@@ -375,5 +378,145 @@ exports.unbanUser = async (req, res) => {
     res.json({ success: true, message: "User unbanned successfully." });
   } catch (error) {
     res.status(500).json({ message: 'Error unbanning user', error: error.message });
+  }
+};
+
+// 12. Initiate Payout via Paystack
+exports.initiatePayout = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const { userId, amount } = req.body; // Amount in GHS
+      const adminId = req.user.id;
+
+      // 1. Validate User and Recipient Code
+      const user = await User.findById(userId).session(session);
+      if (!user || !user.paystack?.recipientCode) {
+        throw new Error('User has no valid Transfer Recipient code');
+      }
+
+      // 2. Check available balance (commissions ready for payout)
+      const availableCommissions = await Commission.find({
+        userId: userId,
+        payoutStatus: 'ready_for_payout'
+      }).session(session);
+
+      const totalAvailable = availableCommissions.reduce((sum, comm) => sum + comm.amount, 0);
+      
+      if (totalAvailable < amount) {
+        throw new Error(`Insufficient available balance. Available: ₵${totalAvailable}, Requested: ₵${amount}`);
+      }
+
+      // 3. Create Transfer Reference
+      const reference = `PAYOUT-${Date.now()}-${userId.toString().slice(-4)}`;
+
+      // 4. Initiate Transfer with Paystack
+      // Note: Paystack Transfer amount is in Pesewas (multiply by 100)
+      const transferResponse = await paystack.post('/transfer', {
+        source: "balance",
+        amount: Math.round(amount * 100), 
+        recipient: user.paystack.recipientCode,
+        reason: "PurWash Earnings Payout",
+        reference: reference
+      });
+
+      if (!transferResponse.data.status) {
+        throw new Error('Paystack Transfer Request Failed');
+      }
+
+      // 5. Update Commissions to 'processing' status
+      // We'll mark a subset of commissions that sum up to the payout amount
+      let remainingAmount = amount;
+      const commissionsToUpdate = [];
+
+      for (const commission of availableCommissions) {
+        if (remainingAmount <= 0) break;
+        
+        const commissionAmount = Math.min(commission.amount, remainingAmount);
+        commissionsToUpdate.push({
+          commissionId: commission._id,
+          amount: commissionAmount
+        });
+        remainingAmount -= commissionAmount;
+      }
+
+      await Commission.updateMany(
+        { 
+          _id: { $in: commissionsToUpdate.map(c => c.commissionId) },
+          userId: userId,
+          payoutStatus: 'ready_for_payout'
+        },
+        { 
+          $set: { 
+            payoutStatus: 'processing',
+            'transferDetails.transferCode': transferResponse.data.data.transfer_code,
+            'transferDetails.reference': reference,
+            'transferDetails.transferredAt': new Date()
+          } 
+        },
+        { session }
+      );
+
+      // 6. Update User Wallet
+      user.wallet.pendingBalance = Math.max(0, user.wallet.pendingBalance - amount);
+      user.wallet.totalWithdrawn = (user.wallet.totalWithdrawn || 0) + amount;
+      await user.save({ session });
+
+      // 7. Log the action
+      await logAction({
+        action: 'ADMIN_PAYOUT_INITIATED',
+        performedBy: adminId,
+        targetUser: userId,
+        metadata: { 
+          amount, 
+          reference, 
+          recipient: user.paystack.recipientCode,
+          transferCode: transferResponse.data.data.transfer_code,
+          commissionsCount: commissionsToUpdate.length
+        },
+        req
+      });
+
+      console.log(`✅ Payout Initiated: ₵${amount} to ${user.email} (${user.businessName})`);
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Transfer initiated successfully. Funds are on the way.' 
+    });
+
+  } catch (error) {
+    console.error("❌ Payout Error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Payout failed' 
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
+// 13. Get Payouts Summary
+exports.getPayoutsSummary = async (req, res) => {
+  try {
+    const { processSettlements, getSettlementSummary } = require('../utils/settlement');
+    
+    // Process settlements first (T+1 logic)
+    await processSettlements();
+    
+    // Get summary
+    const summary = await getSettlementSummary();
+    
+    res.json({
+      success: true,
+      data: summary
+    });
+
+  } catch (error) {
+    console.error('❌ Payouts Summary Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get payouts summary'
+    });
   }
 };

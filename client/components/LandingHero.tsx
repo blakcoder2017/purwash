@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 
 interface LandingHeroProps {
   onBookWash: () => void;
+  onTrackOrder: () => void;
   onShowPrivacy: () => void;
   onShowTerms: () => void;
 }
@@ -56,14 +57,20 @@ const BackgroundAnimations = () => (
 );
 
 
-const LandingHero: React.FC<LandingHeroProps> = ({ onBookWash, onShowPrivacy, onShowTerms }) => {
+const LandingHero: React.FC<LandingHeroProps> = ({ onBookWash, onTrackOrder, onShowPrivacy, onShowTerms }) => {
   return (
     <div className="relative flex flex-col min-h-screen p-6 text-slate-900 overflow-hidden">
       <BackgroundAnimations />
       
       <div className="relative z-10 flex flex-col flex-grow">
-          <header className="flex-shrink-0">
+          <header className="flex-shrink-0 flex justify-between items-center">
             <h1 className="text-2xl font-bold">PurWash</h1>
+            <button 
+              onClick={onTrackOrder}
+              className="text-sm font-semibold text-slate-600 hover:text-slate-900"
+            >
+              Track Order
+            </button>
           </header>
 
           <main className="flex-grow flex flex-col items-center justify-center text-center">
@@ -72,14 +79,23 @@ const LandingHero: React.FC<LandingHeroProps> = ({ onBookWash, onShowPrivacy, on
                 Laundry day. Done.
               </h2>
               <p className="mt-4 text-lg text-slate-600">
-                Tamale’s premium pickup & delivery. 48-hour turnaround.
+                Tamale's premium pickup & delivery. 48-hour turnaround.
               </p>
-              <button
-                onClick={onBookWash}
-                className="mt-8 bg-slate-900 text-white font-semibold py-4 px-8 rounded-xl shadow-lg hover:bg-slate-800 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
-              >
-                Book a Wash
-              </button>
+              
+              <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+                <button
+                  onClick={onBookWash}
+                  className="bg-slate-900 text-white font-semibold py-4 px-8 rounded-xl shadow-lg hover:bg-slate-800 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
+                >
+                  Book a Wash
+                </button>
+                <button
+                  onClick={onTrackOrder}
+                  className="bg-white text-slate-900 font-semibold py-4 px-8 rounded-xl shadow-md border border-slate-200 hover:bg-slate-50 transition-colors duration-300"
+                >
+                  Track Order
+                </button>
+              </div>
             </div>
           </main>
 

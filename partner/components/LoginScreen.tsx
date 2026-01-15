@@ -25,6 +25,7 @@ const LoginScreen: React.FC = () => {
             
             if (data.success) {
                 login(data.data.user, data.data.token);
+                window.location.href = '/dashboard';
             } else {
                 setError(data.message || 'Login failed');
             }

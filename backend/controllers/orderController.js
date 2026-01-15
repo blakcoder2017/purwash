@@ -35,7 +35,7 @@ const getPricingConfig = async () => {
 };
 
 /**
- * Calculate order pricing breakdown
+ * Calculate order pricing breakdown (Legacy/Internal version)
  * @param {Array} items - Array of laundry items with prices
  * @returns {Object} Detailed pricing breakdown
  */
@@ -99,25 +99,24 @@ const calculateOrderPricing = async (items) => {
  */
 const createOrderCommissions = async (order, confirmedBy = 'client') => {
   try {
-    // Only create commissions if order has payment success and is confirmed
+    // Safety Check: Ensure Commission model is loaded
+    if (!Commission) {
+        console.error('❌ Commission model missing');
+        return;
+    }
+    
+    // Only create commissions if payment is successful
     if (order.paymentDetails.status !== 'success') {
-      console.log('❌ Order payment not successful, skipping commission creation');
+      console.log('❌ Order payment not successful, skipping commissions');
       return;
     }
 
-    if (!order.isConfirmedByClient && !order.isAdminConfirmed) {
-      console.log('❌ Order not confirmed, skipping commission creation');
-      return;
-    }
-
-    // Create commissions using the Commission model
     const commissions = await Commission.createOrderCommissions(order, confirmedBy);
     console.log(`✅ Created ${commissions.length} commissions for order ${order.friendlyId}`);
-    
     return commissions;
   } catch (error) {
     console.error('❌ Error creating commissions:', error);
-    throw error;
+    // Non-blocking error: We don't want to fail the request if just stats fail
   }
 };
 
@@ -185,183 +184,155 @@ const generateOrderCode = () => {
 };
 
 /**
- * Create Order - Guest Checkout with Auto-Generated Code
+ * Create Order - FIXED: Removed Transaction Dependency
  * POST /api/orders
  */
 const createOrder = async (req, res) => {
-  const session = await mongoose.startSession();
-  
+  // NOTE: Transactions removed to support standalone MongoDB servers
   try {
-    // Start transaction
-    await session.withTransaction(async () => {
-      const { 
-        items, 
-        phone, 
-        clientName, 
-        location, 
-        paymentMethod = 'momo', // Default to mobile money
-        pickupTime,
-        paystackReference // Optional for Paystack payments
-      } = req.body;
+    const { 
+      items, 
+      phone, 
+      clientName, 
+      location, 
+      paymentMethod = 'momo',
+      pickupTime,
+      paystackReference
+    } = req.body;
 
-      // Validate required fields
-      if (!items || !Array.isArray(items) || items.length === 0) {
-        throw new Error('Items array is required and cannot be empty');
-      }
-      
-      if (!phone) {
-        throw new Error('Phone number is required');
-      }
-      
-      if (!location || !location.addressName) {
-        throw new Error('Location information is required');
-      }
+    // Validate required fields
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new Error('Items array is required and cannot be empty');
+    }
+    if (!phone) throw new Error('Phone number is required');
+    if (!location || !location.addressName) throw new Error('Location information is required');
 
-      // For Paystack payments, verify payment
-      if (paymentMethod === 'momo' && paystackReference) {
-        console.log('🔍 Verifying payment with Paystack...');
-        const paymentVerification = await verifyPaystackPayment(paystackReference);
-        
-        // Calculate pricing
-        const pricing = await calculatePricing(items);
-        
-        // Verify payment amount matches our calculation
-        if (Math.abs(paymentVerification.amount - pricing.totalAmount) > 1) {
-          throw new Error(`Payment amount mismatch. Expected: ₵${pricing.totalAmount}, Paid: ₵${paymentVerification.amount}`);
+    // 1. Verify Payment & Pricing
+    const pricing = await calculateOrderPricing(items);
+    
+    if (paymentMethod === 'momo' && paystackReference) {
+      console.log('🔍 Verifying Paystack...');
+      const verification = await verifyPaystackPayment(paystackReference);
+      // Allow 1 GHS variance for rounding
+      if (Math.abs(verification.amount - pricing.totalAmount) > 1) {
+        throw new Error(`Amount mismatch. Expected: ₵${pricing.totalAmount}, Paid: ₵${verification.amount}`);
+      }
+    }
+
+    // 2. Find or Create Client (Soft Onboarding)
+    console.log('👤 Processing Client...');
+    let client = await Client.findOne({ phone });
+    
+    if (!client) {
+      // Create new client - minimal fields to avoid validation errors
+      client = new Client({
+        phone: phone.trim(),
+        name: (clientName || 'Customer').trim(),
+        savedLocations: [] // Initialize arrays empty to be safe
+      });
+      await client.save();
+      console.log(`✅ New client created: ${client._id}`);
+    } else {
+      // Update existing name if changed
+      if (clientName && client.name !== clientName) {
+        client.name = clientName;
+        await client.save();
+      }
+    }
+
+    // 3. Create Order
+    const orderCode = generateOrderCode();
+    console.log(`📦 Creating Order ${orderCode}...`);
+    
+    const isPaid = paymentMethod === 'momo' && paystackReference;
+    
+    const order = new Order({
+      friendlyId: orderCode,
+      code: orderCode,
+      client: {
+        clientId: client._id,
+        phone: phone,
+        clientName: clientName || client.name,
+        location: {
+          addressName: location.addressName,
+          coordinates: location.coordinates || { lat: 0, lng: 0 }
         }
+      },
+      items: items,
+      pricing: {
+        itemsSubtotal: pricing.baseCost,
+        serviceFee: pricing.platformPercentageFee + pricing.platformItemCommission,
+        deliveryFee: pricing.deliveryFee,
+        systemFee: 0,
+        totalAmount: pricing.totalAmount
+      },
+      status: 'created',
+      paymentMethod: paymentMethod,
+      paymentStatus: isPaid ? 'success' : 'pending',
+      pickupTime: pickupTime || new Date(Date.now() + 2 * 60 * 60 * 1000),
+      paymentDetails: {
+        reference: paystackReference || `CASH-${orderCode}`,
+        channel: paymentMethod === 'momo' ? 'mobile_money' : 'card',
+        status: isPaid ? 'success' : 'pending',
+        amount: pricing.totalAmount,
+        paidAt: isPaid ? new Date() : undefined
       }
+    });
 
-      // Step 1: Generate unique order code
-      const orderCode = generateOrderCode();
-      
-      // Step 2: Calculate pricing
-      console.log('💰 Calculating order pricing...');
-      const pricing = await calculatePricing(items);
+    await order.save();
 
-      // Step 3: Handle soft client creation (invisible to user)
-      console.log('👤 Processing soft client creation...');
-      let client;
-      
-      try {
-        // Simple approach: find or create without using the problematic static method
-        client = await Client.findOne({ phone });
+    // 4. Post-Order Actions (Update Stats & Location)
+    try {
+        await Client.findByIdAndUpdate(client._id, { 
+            $inc: { totalOrders: 1, totalSpent: pricing.totalAmount },
+            $set: { lastOrderDate: new Date() }
+        });
         
-        if (!client) {
-          console.log('Creating new client...');
-          client = new Client({
-            phone,
-            name: clientName || 'Customer'
-          });
-          await client.save();
-          console.log(`✅ New client created: ${client._id}`);
-        } else {
-          console.log(`✅ Existing client found: ${client._id}`);
-          // Update name if different
-          if (clientName && client.name !== clientName) {
-            client.name = clientName;
-            await client.save();
-          }
+        // Save location if new
+        const locExists = client.savedLocations?.some(l => l.address === location.addressName);
+        if (!locExists && location.addressName) {
+            await Client.findByIdAndUpdate(client._id, {
+                $push: { savedLocations: {
+                    label: 'Pickup',
+                    address: location.addressName,
+                    coordinates: location.coordinates || { lat: 0, lng: 0 },
+                    createdAt: new Date()
+                }}
+            });
         }
-      } catch (error) {
-        throw new Error(`Client processing failed: ${error.message}`);
-      }
+    } catch (updateError) {
+        console.error("⚠️ Failed to update client stats:", updateError.message);
+        // Do not fail the request just because stats failed
+    }
 
-      // Step 4: Create order with simplified structure
-      console.log('📦 Creating order...');
-      const orderData = {
-        friendlyId: orderCode,
-        code: orderCode, // Simple tracking code
-        client: {
-          clientId: client._id,
-          phone: phone,
-          clientName: clientName || client.name,
-          location: {
-            addressName: location.addressName,
-            coordinates: location.coordinates || { lat: 0, lng: 0 }
-          }
-        },
-        items: items,
-        pricing: {
-          itemsSubtotal: pricing.baseCost,
-          serviceFee: pricing.platformPercentageFee + pricing.platformItemCommission,
-          deliveryFee: pricing.deliveryFee,
-          systemFee: 0, // Simplified
+    // 5. CRITICAL: Generate Commissions
+    if (isPaid) {
+        console.log('💸 Generating commissions...');
+        await createOrderCommissions(order, 'client');
+    }
+
+    console.log('✅ Order Process Completed Successfully');
+
+    res.status(201).json({
+      success: true,
+      data: {
+        order: {
+          friendlyId: orderCode,
+          code: orderCode,
+          status: order.status,
           totalAmount: pricing.totalAmount
         },
-        status: 'created', // Use valid enum value
-        paymentMethod: paymentMethod,
-        paymentStatus: paymentMethod === 'cash' ? 'pending' : 'success',
-        pickupTime: pickupTime || new Date(Date.now() + 2 * 60 * 60 * 1000), // Default 2 hours
-        createdAt: new Date(),
-        // Add required paymentDetails for schema compatibility
-        paymentDetails: {
-          reference: paystackReference || `CASH-${orderCode}`, // Generate reference for cash orders
-          channel: paymentMethod === 'momo' ? 'mobile_money' : 'card', // Use valid enum values
-          status: paymentMethod === 'cash' ? 'pending' : 'success',
-          amount: pricing.totalAmount,
-          paidAt: paymentMethod === 'momo' && paystackReference ? new Date() : undefined
-        }
-      };
-
-      const order = new Order(orderData);
-      await order.save({ session });
-
-      // Step 5: Update client stats (soft account)
-      await Client.findByIdAndUpdate(
-        client._id,
-        { 
-          $inc: { totalOrders: 1, totalSpent: pricing.totalAmount },
-          $set: { lastOrderDate: new Date() }
-        },
-        { session }
-      );
-
-      // Step 6: Save location for future convenience
-      if (location.addressName) {
-        await Client.findByIdAndUpdate(
-          client._id,
-          {
-            $push: {
-              savedLocations: {
-                label: 'Default Pickup',
-                address: location.addressName,
-                coordinates: location.coordinates || { lat: 0, lng: 0 },
-                isDefault: true,
-                createdAt: new Date()
-              }
-            }
-          },
-          { session }
-        );
+        trackingCode: orderCode,
+        message: 'Order placed successfully!'
       }
-
-      console.log(`✅ Order created: ${orderCode}`);
-
-      res.status(201).json({
-        success: true,
-        data: {
-          order: {
-            friendlyId: orderCode,
-            code: orderCode,
-            status: order.status,
-            totalAmount: pricing.totalAmount,
-            pickupTime: order.pickupTime,
-            phone: phone
-          },
-          message: `Order placed successfully! Your order code is: ${orderCode}`,
-          trackingCode: orderCode
-        }
-      });
     });
 
   } catch (error) {
-    console.error('❌ Order creation failed:', error);
+    console.error('❌ Order Creation Error:', error.message);
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to create order'
     });
-  } finally {
-    await session.endSession();
   }
 };
 
@@ -527,10 +498,15 @@ const calculatePricing = async (items) => {
 
   // Calculate fees
   const platformPercentageFee = (itemsSubtotal * config.platformFeePercentage) / 100;
+  
+  // FIXED: Platform commission per item should NOT be added to client total
+  // It is usually a deduction from partner earnings
   const platformItemCommission = items.length * config.platformPerItemFee;
+  
   const deliveryFee = config.deliveryFee;
   
-  const totalAmount = itemsSubtotal + platformPercentageFee + platformItemCommission + deliveryFee;
+  // FIXED: Total Amount = Subtotal + % Fee + Delivery (Removed platformItemCommission)
+  const totalAmount = itemsSubtotal + platformPercentageFee + deliveryFee;
 
   return {
     baseCost: itemsSubtotal,
@@ -542,8 +518,7 @@ const calculatePricing = async (items) => {
     breakdown: {
       items: itemsSubtotal,
       delivery: deliveryFee,
-      system: `(${config.platformFeePercentage}% + ₵${config.platformPerItemFee} per item)`,
-      perItem: `₵${config.platformPerItemFee} × ${items.length}`,
+      system: `(${config.platformFeePercentage}%)`, // Updated text to reflect reality
       total: totalAmount
     }
   };

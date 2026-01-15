@@ -33,6 +33,7 @@ const App: React.FC = () => {
         return (
           <LandingHero
             onBookWash={openOrderSheet}
+            onTrackOrder={handleTrackOrder}
             onShowPrivacy={() => setCurrentView('privacy')}
             onShowTerms={() => setCurrentView('terms')}
           />

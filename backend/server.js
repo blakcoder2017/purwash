@@ -36,18 +36,25 @@ const server = app.listen(port, () => {
 });
 
 // Initialize Socket.io
+const allowedOrigins = new Set([
+  'https://purwash.onrender.com',
+  'https://purwash-rider.vercel.app',
+  'https://purwash-partner.vercel.app',
+  'https://purwash-admin.vercel.app',
+  'https://purwash-client.vercel.app'
+]);
+
 const io = new Server(server, {
   cors: {
-    origin: [
-      'http://localhost:3000',  // Client app
-      'http://localhost:3001',  // Admin app
-      'http://localhost:3002',  // Partner app
-      'http://localhost:3003',  // Rider app
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-      'http://127.0.0.1:3002',
-      'http://127.0.0.1:3003'
-    ],
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.has(origin) || origin.endsWith('.vercel.app')) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST'],
     credentials: true
   }

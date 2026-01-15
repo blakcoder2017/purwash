@@ -1,7 +1,7 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://purwash-backend.vercel.app/api/$1" },
+    { "source": "/api/(.*)", "destination": "https://purwash.onrender.com/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -12757,3 +12757,4 @@ styleci-cache
 
 # Optional testling cache
 test
+.vercel

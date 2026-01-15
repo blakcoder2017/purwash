@@ -1,11 +1,11 @@
 // Admin Portal Configuration
 const CONFIG = {
-    development: {
-        API_BASE: 'http://localhost:5000/api',
-        WS_URL: 'ws://localhost:5000',
-        REFRESH_INTERVAL: 30000, // 30 seconds
-        PAGE_SIZE: 10
-    },
+    // development: {
+    //     API_BASE: 'http://localhost:5000/api',
+    //     WS_URL: 'ws://localhost:5000',
+    //     REFRESH_INTERVAL: 30000, // 30 seconds
+    //     PAGE_SIZE: 10
+    // },
     production: {
         API_BASE: 'https://purwash.onrender.com/api',
         WS_URL: 'wss://purwash.onrender.com',

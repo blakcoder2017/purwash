@@ -211,6 +211,30 @@ const stepThreePaymentSetup = async (req, res) => {
 
     // Try to resolve MoMo name and create recipient (optional - don't fail if this fails)
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'H4',
+          location: 'backend/controllers/partnerRegistrationController.js:214',
+          message: 'partner_step3_paystack_start',
+          data: {
+            userId,
+            momoNetwork,
+            keyType: process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_live_')
+              ? 'live'
+              : process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_test_')
+                ? 'test'
+                : 'unknown'
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
+
       console.log('Attempting to resolve MoMo name...');
       
       // Add delay to avoid rate limiting
@@ -236,6 +260,29 @@ const stepThreePaymentSetup = async (req, res) => {
       });
 
       console.log('Transfer recipient created:', recipient.data.data.recipient_code);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'H5',
+          location: 'backend/controllers/partnerRegistrationController.js:239',
+          message: 'partner_step3_recipient_created',
+          data: {
+            userId,
+            keyType: process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_live_')
+              ? 'live'
+              : process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_test_')
+                ? 'test'
+                : 'unknown'
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
 
       // Update with successful verification
       user.momo.resolvedName = resolvedName;
@@ -366,6 +413,29 @@ const verifyMoMoAndCreateRecipient = async (req, res) => {
       currency: "GHS",
       description: `PurWash Payout: ${user.profile.firstName}` 
     });
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H6',
+        location: 'backend/controllers/partnerRegistrationController.js:370',
+        message: 'verify_momo_recipient_created',
+        data: {
+          userId,
+          keyType: process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_live_')
+            ? 'live'
+            : process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_test_')
+              ? 'test'
+              : 'unknown'
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
 
     console.log('Transfer recipient created:', recipient.data.data.recipient_code);
 

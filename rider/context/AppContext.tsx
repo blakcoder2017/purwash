@@ -31,6 +31,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [error, setError] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const lastUserIdRef = useRef<string | null>(null);
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'H1',
+      location: 'rider/context/AppContext.tsx:34',
+      message: 'app_context_render',
+      data: {
+        userId: user?._id || null,
+        hasSocket: Boolean(socketRef.current),
+        loading
+      },
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
 
   // Check for existing token and load user on mount
   useEffect(() => {
@@ -71,28 +92,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- PRODUCTION WEBSOCKET IMPLEMENTATION ---
   // This hook manages the WebSocket connection throughout the user's session.
   useEffect(() => {
-    // 1. Connect if user is logged in and there's no active connection.
-    if (user && !socketRef.current) {
+    const userId = user?._id;
+    const prevUserId = lastUserIdRef.current;
+    lastUserIdRef.current = userId || null;
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        location: 'rider/context/AppContext.tsx:74',
+        message: 'socket_effect_run',
+        data: {
+          userId,
+          prevUserId,
+          hasSocket: Boolean(socketRef.current)
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+
+    if (userId && !socketRef.current) {
       console.log('User logged in. Initializing WebSocket connection...');
-      // Establish connection with the backend.
       const socket = io(API_BASE_URL, {
         reconnectionAttempts: 5,
-        query: { userId: user._id },
+        query: { userId }
       });
       socketRef.current = socket;
 
-      // 2. Authenticate with WebSocket server
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'H3',
+          location: 'rider/context/AppContext.tsx:92',
+          message: 'socket_created',
+          data: {
+            userId,
+            apiBase: API_BASE_URL
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
+
       socket.emit('authenticate', {
-        userId: user._id,
-        role: user.role || 'rider' // Default to rider for this app
+        userId,
+        role: user?.role || 'rider'
       });
 
-      // 3. Set up event listeners for the socket.
       socket.on('connect', () => {
         console.log(`WebSocket connected successfully with ID: ${socket.id}`);
       });
       
-      // This is the primary listener for real-time order assignments.
       socket.on('new_order', (orderData: Order) => {
         console.log('Received "new_order" event from server:', orderData);
         setOrders(prev => [orderData, ...prev.filter(order => order._id !== orderData._id)]);
@@ -100,10 +159,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setNotification(`New mission assigned! Order #${orderData.friendlyId}`);
       });
 
-      // Listen for order status updates
       socket.on('order_status_update', (data: any) => {
         console.log('Order status updated:', data);
-        // Update local order state if needed
         setOrders(prev => prev.map(order => order._id === data.orderId ? { ...order, status: data.status } : order));
         if (activeOrder && activeOrder._id === data.orderId) {
           setActiveOrder(prev => prev ? { ...prev, status: data.status } : null);
@@ -115,16 +172,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     }
 
-    // 3. Cleanup on logout or component unmount.
-    // The return function from useEffect is used for cleanup.
+    if (!userId && socketRef.current) {
+      console.log('Cleaning up WebSocket connection.');
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'H4',
+          location: 'rider/context/AppContext.tsx:118',
+          message: 'socket_cleanup_no_user',
+          data: {
+            userId,
+            hasSocket: Boolean(socketRef.current)
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+  }, [user?._id]);
+
+  useEffect(() => {
     return () => {
       if (socketRef.current) {
-        console.log('Cleaning up WebSocket connection.');
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: 'debug-session',
+            runId: 'pre-fix',
+            hypothesisId: 'H5',
+            location: 'rider/context/AppContext.tsx:131',
+            message: 'socket_cleanup_unmount',
+            data: {
+              userId: user?._id || null
+            },
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [user]); // This effect depends only on the user object.
+  }, []);
 
   const login = (userData: User, token: string) => {
     localStorage.setItem('PurWashRiderToken', token);

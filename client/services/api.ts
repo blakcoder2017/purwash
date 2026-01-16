@@ -2,7 +2,7 @@ import axios from 'axios';
 import type { OrderItem, CreateOrderPayload, Client, CalculatePriceResponseData, LaundryItem, TrackOrderResponse } from '../types';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://purwash.onrender.com/api',
   headers: {
     'Content-Type': 'application/json',
   },

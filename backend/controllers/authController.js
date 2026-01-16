@@ -489,6 +489,30 @@ const verifyAndSetupMomo = async (req, res) => {
   const user = await User.findById(req.user.id);
 
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        location: 'backend/controllers/authController.js:491',
+        message: 'verify_momo_start',
+        data: {
+          userId: req.user?.id || null,
+          momoNetwork,
+          keyType: process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_live_')
+            ? 'live'
+            : process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_test_')
+              ? 'test'
+              : 'unknown'
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+
     // 1. Resolve Momo Name (Verify the account exists)
     // For Ghana MoMo, the bank_code is 'MTN', 'VOD', or 'TGO'
     const resolve = await paystack.get(`/bank/resolve?account_number=${momoNumber}&bank_code=${momoNetwork.toUpperCase()}`);
@@ -511,6 +535,29 @@ const verifyAndSetupMomo = async (req, res) => {
       bank_code: momoNetwork.toUpperCase(),
       currency: "GHS"
     });
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H3',
+        location: 'backend/controllers/authController.js:515',
+        message: 'verify_momo_recipient_created',
+        data: {
+          userId: req.user?.id || null,
+          keyType: process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_live_')
+            ? 'live'
+            : process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_test_')
+              ? 'test'
+              : 'unknown'
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
 
     // Update User in DB
     user.momo = {

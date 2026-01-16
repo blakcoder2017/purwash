@@ -1,6 +1,6 @@
 import { Order, OrderStatus } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://purwash.onrender.com/api';
 
 async function handleResponse<T>(response: Response): Promise<T> {
   const data = await response.json();

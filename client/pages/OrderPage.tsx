@@ -12,6 +12,7 @@ const OrderPage: React.FC = () => {
   
   // --- STATE ---
   const [laundryItems, setLaundryItems] = useState<LaundryItem[]>([]);
+  const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<string>('clothing');
   
@@ -35,6 +36,7 @@ const OrderPage: React.FC = () => {
   // --- 1. FETCH DATA ---
   useEffect(() => {
     const init = async () => {
+      setIsLoadingItems(true);
       try {
         const itemsRes = await api.getLaundryItems();
         setLaundryItems(itemsRes.data || []);
@@ -44,7 +46,9 @@ const OrderPage: React.FC = () => {
           setPaystackPublicKey(configRes.data.publicKey);
         }
       } catch (err) {
-        console.error("Init failed", err);
+        setError('Failed to load laundry items. Please refresh and try again.');
+      } finally {
+        setIsLoadingItems(false);
       }
     };
     init();
@@ -84,11 +88,9 @@ const OrderPage: React.FC = () => {
             price: (item?.pricing?.clientPrice || 0), 
             quantity: qty 
         };
-        console.log('🔄 Processing item:', { id, qty, item: item?.name, price: result.price });
         return result;
       });
     
-    console.log('📦 Final itemsForApi:', items);
     return items;
   }, [selectedItems, laundryItems]);
 
@@ -102,13 +104,8 @@ const OrderPage: React.FC = () => {
   }, [selectedItems]);
 
   const calculateTotal = useCallback(async () => {
-    console.log('🧮 calculateTotal called');
-    console.log('📦 itemsForApi:', itemsForApi);
-    console.log('🔢 selectedItems:', selectedItems);
-    console.log('👕 laundryItems count:', laundryItems.length);
     
     if (itemsForApi.length === 0) {
-      console.log('❌ No items, setting total to 0');
       setTotalAmount(0);
       setPricingBreakdown(null);
       return;
@@ -117,7 +114,6 @@ const OrderPage: React.FC = () => {
     setIsCalculatingPrice(true);
     try {
       // Try API first with timeout
-      console.log('📡 Trying API...');
       
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('API timeout after 3 seconds')), 3000)
@@ -129,18 +125,15 @@ const OrderPage: React.FC = () => {
       ]) as any;
       
       if (res.success) {
-        console.log('✅ API success:', res.data.totalAmount);
         setTotalAmount(res.data.totalAmount);
         setPricingBreakdown(res.data);
         setError(null);
       }
     } catch (err: any) {
-      console.warn("⚠️ API Price failed, using fallback:", err);
       
       // Fallback Logic - Correct Business Logic
       const subtotal = itemsForApi.reduce((acc, item) => {
         const itemTotal = Number(item.price) * Number(item.quantity);
-        console.log(`Item: ${item.name}, Price: ${item.price}, Qty: ${item.quantity}, Total: ${itemTotal}`);
         return acc + itemTotal;
       }, 0);
       
@@ -152,15 +145,6 @@ const OrderPage: React.FC = () => {
       const platformPercentageFee = subtotal * (platformFeePercentage / 100);
       const platformItemCommission = itemCount * platformItemFee;
       const total = subtotal + deliveryFee + platformPercentageFee;
-      
-      console.log('💰 Correct calculation:', {
-        subtotal,
-        deliveryFee,
-        platformPercentageFee,
-        platformItemCommission,
-        total,
-        note: 'After payment: Platform takes 9% + ₵1/item, Rider gets ₵10, Partner gets remainder'
-      });
       
       if (subtotal < minOrderAmount) {
         setError(`Minimum order amount is ₵${minOrderAmount}. Current subtotal: ₵${subtotal}`);
@@ -200,88 +184,61 @@ const OrderPage: React.FC = () => {
     metadata: { custom_fields: [{ display_name: "Phone", variable_name: "phone", value: phone }] }
   }), [phone, totalAmount, paystackPublicKey, currentPaymentReference]);
   
-  console.log('🔧 Paystack config:', config);
   
   const initializePayment = usePaystackPayment(config);
 
   const onSuccess = (reference: any) => {
-    console.log('💳 Payment Success Callback Triggered!');
-    console.log('📋 Paystack Reference:', reference);
-    console.log('🔍 Reference object:', JSON.stringify(reference, null, 2));
     
     if (paymentHandledRef.current) {
-      console.log('⚠️ Payment already handled, skipping duplicate callback');
       return;
     }
 
     if (reference && reference.reference) {
       paymentHandledRef.current = true;
-      console.log('✅ Valid reference found, proceeding with order creation...');
       handleCreateOrder(reference.reference);
     } else {
-      console.error('❌ Invalid reference object:', reference);
       setError('Payment succeeded but reference is missing. Please contact support.');
     }
   };
 
   const handlePaymentClose = () => {
-    console.log('❌ Payment window closed by user');
     setError('Payment was cancelled. Please try again.');
   };
 
   const handlePaymentClick = () => {
-    console.log('💳 Payment Button Clicked');
-    console.log('🔍 Form Validation Check:', {
-      phone: phone.length,
-      clientName: clientName.length,
-      location: location.length,
-      itemsCount: itemsForApi.length,
-      totalAmount,
-      isFormValid,
-      isPaystackReady: !!(paystackPublicKey && paystackPublicKey.startsWith('pk_'))
-    });
-    
     if (!isFormValid) {
-      console.error('❌ Form validation failed');
       setError('Please fill in all required fields');
       return;
     }
     
-    console.log('✅ Form validation passed, initializing payment...');
     paymentHandledRef.current = false;
     
     // Generate and store the reference for this payment
     const paymentReference = new Date().getTime().toString();
     setCurrentPaymentReference(paymentReference);
-    console.log('💾 Stored payment reference for manual verification:', paymentReference);
     
     // Start manual verification as fallback
     setTimeout(() => {
       if (!paymentHandledRef.current) {
-        console.log('🔄 Starting manual payment verification fallback...');
         verifyPaymentManually(paymentReference);
       }
     }, 10000); // Start checking after 10 seconds
     
     initializePayment({
       onSuccess,
-      onClose: handlePaymentClose,
-      config: { reference: paymentReference }
+      onClose: handlePaymentClose
     });
   };
 
   // Manual payment verification fallback
   const verifyPaymentManually = async (reference: string) => {
     if (paymentHandledRef.current) {
-      console.log('✅ Payment already handled, skipping manual verification');
       return;
     }
     if (isVerifyingPayment) {
-      console.log('⏳ Verification already in progress, skipping...');
       return;
     }
     
-    console.log('🔍 Manually verifying payment:', reference);
     setIsVerifyingPayment(true);
     
     try {
@@ -304,35 +261,28 @@ const OrderPage: React.FC = () => {
       }
       
       const result = await response.json();
-      console.log('📨 Manual verification result:', result);
       
       if (result.success && result.data.status === 'success') {
-        console.log('✅ Payment verified manually, proceeding with order creation...');
         // Clear any existing error
         setError(null);
         setIsVerifyingPayment(false);
         // Trigger order creation
         handleCreateOrder(reference);
       } else {
-        console.log('⏳ Payment not yet verified, checking again...');
-        console.log('🔍 Payment status:', result.data?.status);
         // Only retry if payment is still pending
         if (result.data?.status === 'pending' || result.data?.status === 'processing') {
           setIsVerifyingPayment(false);
           // Try again after 5 seconds
           setTimeout(() => verifyPaymentManually(reference), 5000);
         } else {
-          console.error('❌ Payment failed or cancelled');
           setIsVerifyingPayment(false);
           setError('Payment failed. Please try again.');
         }
       }
     } catch (error) {
-      console.error('❌ Manual verification failed:', error);
       setIsVerifyingPayment(false);
       
       if (error.name === 'AbortError') {
-        console.log('⏱️ Verification request timed out');
         setError('Verification timed out. Please try again.');
       } else {
         setError('Payment verification failed. Please contact support.');
@@ -341,16 +291,8 @@ const OrderPage: React.FC = () => {
   };
 
   const handleCreateOrder = async (ref?: string) => {
-    console.log('🚀 Order Creation Started');
-    console.log('📞 Phone:', phone);
-    console.log('👤 Client Name:', clientName);
-    console.log('📍 Location:', location);
-    console.log('📦 Items:', itemsForApi);
-    console.log('💰 Total Amount:', totalAmount);
-    console.log('🔗 Paystack Reference:', ref);
     
     if (isSubmittingRef.current) {
-      console.log('⚠️ Order creation already in progress, skipping');
       return;
     }
     isSubmittingRef.current = true;
@@ -367,16 +309,11 @@ const OrderPage: React.FC = () => {
             paymentMethod: 'momo'
         };
         
-        console.log('📤 Sending order payload:', JSON.stringify(payload, null, 2));
         
         const res = await api.createOrder(payload);
         
-        console.log('📨 Order API Response:', JSON.stringify(res, null, 2));
         
         if (res.success) {
-            console.log('✅ Order created successfully!');
-            console.log('🎫 Tracking Code:', res.data.trackingCode);
-            console.log('🆔 Order ID:', res.data.orderId);
             
             // Show success message
             setError(null); // Clear any existing errors
@@ -384,24 +321,14 @@ const OrderPage: React.FC = () => {
             
             const trackingCode = res.data.trackingCode;
             const paymentSuccessUrl = `/payment-success?reference=${encodeURIComponent(ref || '')}&order=${encodeURIComponent(trackingCode)}&phone=${encodeURIComponent(phone)}`;
-            console.log('🔄 Navigating to payment success:', paymentSuccessUrl);
             navigate(paymentSuccessUrl);
         } else {
-            console.error('❌ Order creation failed:', res);
             setError(res.message || 'Order creation failed');
         }
     } catch (err: any) {
-        console.error('💥 Order creation error:', err);
-        console.error('🔍 Error details:', {
-            message: err.message,
-            response: err.response?.data,
-            status: err.response?.status
-        });
-        
         const errorMessage = err.response?.data?.message || err.message || 'Order creation failed';
         setError(errorMessage);
     } finally {
-        console.log('🏁 Order creation process finished');
         setIsCreatingOrder(false);
         isSubmittingRef.current = false;
     }
@@ -502,48 +429,54 @@ const OrderPage: React.FC = () => {
           </div>
 
           {/* Items Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {categorizedItems[activeTab]?.map(item => (
-              <div key={item._id} className={`border rounded-xl p-3 transition-all flex flex-col justify-between min-h-[7.5rem] ${
-                selectedItems[item._id] ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-              }`}>
-                <div>
-                  <h4 className="font-semibold text-gray-900 text-sm sm:text-base leading-tight line-clamp-2">{item.name}</h4>
-                  {item.description && (
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.description}</p>
-                  )}
-                  <p className="font-bold text-gray-900 text-sm mt-2">₵{item.pricing?.clientPrice}</p>
-                </div>
-                
-                <div className="flex items-center justify-between mt-2">
-                  {selectedItems[item._id] ? (
-                    <div className="flex items-center space-x-1 w-full justify-between">
+          {isLoadingItems ? (
+            <div className="flex items-center justify-center py-10">
+              <Spinner className="w-6 h-6 border-gray-800" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {categorizedItems[activeTab]?.map(item => (
+                <div key={item._id} className={`border rounded-xl p-3 transition-all flex flex-col justify-between min-h-[7.5rem] ${
+                  selectedItems[item._id] ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                }`}>
+                  <div>
+                    <h4 className="font-semibold text-gray-900 text-sm sm:text-base leading-tight line-clamp-2">{item.name}</h4>
+                    {item.description && (
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.description}</p>
+                    )}
+                    <p className="font-bold text-gray-900 text-sm mt-2">₵{item.pricing?.clientPrice}</p>
+                  </div>
+                  
+                  <div className="flex items-center justify-between mt-2">
+                    {selectedItems[item._id] ? (
+                      <div className="flex items-center space-x-1 w-full justify-between">
+                        <button 
+                          onClick={() => updateQuantity(item._id, (selectedItems[item._id] || 0) - 1)} 
+                          className="w-5 h-5 rounded bg-white border text-gray-600 flex items-center justify-center text-xs"
+                        >
+                          -
+                        </button>
+                        <span className="font-bold text-xs">{selectedItems[item._id]}</span>
+                        <button 
+                          onClick={() => updateQuantity(item._id, (selectedItems[item._id] || 0) + 1)} 
+                          className="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center text-xs"
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
                       <button 
-                        onClick={() => updateQuantity(item._id, (selectedItems[item._id] || 0) - 1)} 
-                        className="w-5 h-5 rounded bg-white border text-gray-600 flex items-center justify-center text-xs"
+                        onClick={() => updateQuantity(item._id, 1)} 
+                        className="w-full text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 rounded"
                       >
-                        -
+                        Add
                       </button>
-                      <span className="font-bold text-xs">{selectedItems[item._id]}</span>
-                      <button 
-                        onClick={() => updateQuantity(item._id, (selectedItems[item._id] || 0) + 1)} 
-                        className="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center text-xs"
-                      >
-                        +
-                      </button>
-                    </div>
-                  ) : (
-                    <button 
-                      onClick={() => updateQuantity(item._id, 1)} 
-                      className="w-full text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 rounded"
-                    >
-                      Add
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Summary */}

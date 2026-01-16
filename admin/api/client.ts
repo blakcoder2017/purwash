@@ -5,7 +5,7 @@ const VITE_API_URL = process.env.VITE_API_URL;
 const VITE_ADMIN_SECRET_KEY = process.env.VITE_ADMIN_SECRET_KEY;
 
 const adminApi = axios.create({
-  baseURL: VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: VITE_API_URL || 'https://purwash.onrender.com/api',
   headers: {
     'x-admin-secret': VITE_ADMIN_SECRET_KEY || 'PurWash_Tamale_2026_XYZ',
     'Content-Type': 'application/json',

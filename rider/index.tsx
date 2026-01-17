@@ -4,6 +4,20 @@ import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
 import { AppProvider } from './context/AppContext';
+import PWAInstallGuard from './components/PWAInstallGuard';
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('SW registered: ', registration);
+      })
+      .catch((registrationError) => {
+        console.log('SW registration failed: ', registrationError);
+      });
+  });
+}
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,9 +28,11 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <AppProvider>
-      <HashRouter>
-        <App />
-      </HashRouter>
+      <PWAInstallGuard>
+        <HashRouter>
+          <App />
+        </HashRouter>
+      </PWAInstallGuard>
     </AppProvider>
   </React.StrictMode>
 );

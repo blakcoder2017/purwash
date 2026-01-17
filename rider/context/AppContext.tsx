@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { User, Order } from '../types';
 import { API_BASE_URL } from '../constants';
@@ -33,26 +33,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const socketRef = useRef<Socket | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
 
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId: 'H1',
-      location: 'rider/context/AppContext.tsx:34',
-      message: 'app_context_render',
-      data: {
-        userId: user?._id || null,
-        hasSocket: Boolean(socketRef.current),
-        loading
-      },
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-
   // Check for existing token and load user on mount
   useEffect(() => {
     const token = localStorage.getItem('PurWashRiderToken');
@@ -78,16 +58,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, []);
 
+  const fetchOrder = useCallback(async () => {
+    if (!user || loading) return;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const orders = await riderApi.getPendingOrders();
+      const assignedOrders = Array.isArray(orders) ? orders : [];
+      setOrders(assignedOrders);
+      setActiveOrder(assignedOrders.length > 0 ? assignedOrders[0] : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch order');
+    } finally {
+      setLoading(false);
+    }
+  }, [user, loading]);
+
   useEffect(() => {
-    if (user) {
+    if (user && !loading) {
       localStorage.setItem('PurWashRiderUser', JSON.stringify(user));
       fetchOrder();
-    } else {
+    } else if (!user) {
       localStorage.removeItem('PurWashRiderUser');
       setActiveOrder(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, loading]);
 
   // --- PRODUCTION WEBSOCKET IMPLEMENTATION ---
   // This hook manages the WebSocket connection throughout the user's session.
@@ -96,26 +92,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const prevUserId = lastUserIdRef.current;
     lastUserIdRef.current = userId || null;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'H2',
-        location: 'rider/context/AppContext.tsx:74',
-        message: 'socket_effect_run',
-        data: {
-          userId,
-          prevUserId,
-          hasSocket: Boolean(socketRef.current)
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
-
     if (userId && !socketRef.current) {
       console.log('User logged in. Initializing WebSocket connection...');
       const socket = io(API_BASE_URL, {
@@ -123,25 +99,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         query: { userId }
       });
       socketRef.current = socket;
-
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H3',
-          location: 'rider/context/AppContext.tsx:92',
-          message: 'socket_created',
-          data: {
-            userId,
-            apiBase: API_BASE_URL
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
 
       socket.emit('authenticate', {
         userId,
@@ -174,49 +131,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (!userId && socketRef.current) {
       console.log('Cleaning up WebSocket connection.');
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'H4',
-          location: 'rider/context/AppContext.tsx:118',
-          message: 'socket_cleanup_no_user',
-          data: {
-            userId,
-            hasSocket: Boolean(socketRef.current)
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-  }, [user?._id]);
+  }, [user?._id, user?.role]);
 
   useEffect(() => {
     return () => {
       if (socketRef.current) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/d4f0130a-59ab-40d3-81c4-822ff2880a92', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: 'debug-session',
-            runId: 'pre-fix',
-            hypothesisId: 'H5',
-            location: 'rider/context/AppContext.tsx:131',
-            message: 'socket_cleanup_unmount',
-            data: {
-              userId: user?._id || null
-            },
-            timestamp: Date.now()
-          })
-        }).catch(() => {});
-        // #endregion
         socketRef.current.disconnect();
         socketRef.current = null;
       }
@@ -241,23 +163,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const clearNotification = () => setNotification(null);
 
   const clearError = () => setError(null);
-
-  const fetchOrder = async () => {
-    if (!user) return;
-    
-    setLoading(true);
-    setError(null);
-    try {
-      const orders = await riderApi.getPendingOrders();
-      const assignedOrders = Array.isArray(orders) ? orders : [];
-      setOrders(assignedOrders);
-      setActiveOrder(assignedOrders.length > 0 ? assignedOrders[0] : null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch order');
-    } finally {
-      setLoading(false);
-    }
-  };
   
   const updateOrderStatus = async (orderId: string, status: Order['status']) => {
     setLoading(true);

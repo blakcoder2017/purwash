@@ -15,34 +15,28 @@ const WalletScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadWallet = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await riderApi.getWalletData();
+      const data = response.data;
+      const totalEarned = data?.wallet?.totalEarned ?? 0;
+      const pendingBalance = data?.wallet?.pendingBalance ?? 0;
+      setWalletTotals({ totalEarned, pendingBalance });
+      setTransactions(data?.transactions || []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load wallet.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadWallet = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await riderApi.getWalletData();
-        const data = response.data;
-        const totalEarned = data?.wallet?.totalEarned ?? 0;
-        const pendingBalance = data?.wallet?.pendingBalance ?? 0;
-        setWalletTotals({ totalEarned, pendingBalance });
-        setTransactions(data?.transactions || []);
-        if (user) {
-          updateUser({
-            ...user,
-            wallet: {
-              totalEarned,
-              pendingBalance
-            }
-          });
-        }
-      } catch (err: any) {
-        setError(err.message || 'Failed to load wallet.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadWallet();
-  }, []);
+    if (user?._id) {
+      loadWallet();
+    }
+  }, [user?._id]);
 
   const totalEarned = walletTotals.totalEarned || user?.wallet?.totalEarned || 0;
   const pending = walletTotals.pendingBalance || user?.wallet?.pendingBalance || 0;
